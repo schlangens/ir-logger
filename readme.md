@@ -11,21 +11,25 @@ The "Incident Response Logger" is a graphical user interface (GUI) tool built wi
 - Option to save locally for non-collaborative work.
 
 ### Empty State
-
-![[Pasted image 20250220160032.png]]
+![Empty State](Screenshots-IR-Logger/20250220160032.png)
 The initial state of the GUI, ready for input with the `EventID` field and past events dropdown.
 
 ### Technical Details Entry
-![[Pasted image 20250220160153.png]]
+![Technical Details Entry](Screenshots-IR-Logger/20250220160153.png)
 An example of logging a technical finding under "Initial Access," including text and an attached image.
 
 ### Timeline Event Entry
-![[Pasted image 20250220160240.png]]
+![Timeline Event Entry](Screenshots-IR-Logger/20250220160240.png)
 An example of logging a timeline event, such as "Incident escalated."
 
 ### Preview with Entries
-![[Pasted image 20250220160332.png]]
+![Preview with Entries](Screenshots-IR-Logger/20250220160332.png)
 The "Current Report" showing logged entries for `EventID 1001` after refreshing.
+
+### File Attachment
+![File Attachment](Screenshots-IR-Logger/20250220160453.png)
+An example of attaching a file, visible in the "Details" and saved to the event folder.
+
 
 ### File Attachment
 
