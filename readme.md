@@ -31,11 +31,6 @@ The "Current Report" showing logged entries for `EventID 1001` after refreshing.
 An example of attaching a file, visible in the "Details" and saved to the event folder.
 
 
-### File Attachment
-
-![[Pasted image 20250220160453.png]]
-An example of attaching a file, visible in the "Details" and saved to the event folder.
-
 ---
 
 ## Installation and Setup
