@@ -38,81 +38,19 @@ An example of attaching a file, visible in the "Details" and saved to the event 
 
 ---
 
-## Installation and Setup
+## Instructions to Install Dependencies:
+Ensure you have Python installed on your system.
 
-### Prerequisites
+Open a terminal or command prompt.
 
-- **Python 3.12 or later**: Ensure Python is installed on your system. You can download it from [python.org](https://www.python.org/downloads/).
-    
-- **Pillow (Optional)**: For image pasting from the clipboard, install `Pillow`:
- ```
- "C:/Program Files/Python312/Scripts/pip.exe" install Pillow
-```
-    
-    
-If not installed, the "Paste Image" feature will show an error but won’t affect other functionality.
-    
+Navigate to the directory where your requirements.txt file is located.
 
-### Dependencies
+Run the following command:
 
-- Uses standard Python libraries (`tkinter`, `os`, `datetime`, `shutil`, `re`).
-    
-- `Pillow` is optional for handling images.
-    
-- No additional setup required beyond installing Python.
-    
+``pip install -r requirements.txt``
 
-### Linux Installation
-
-1. Save the script as `ir-logger.py` in a directory (e.g., `/home/yourusername/ir-logger/`).
+This will install the required dependencies for your script. Note that tkinter is included with Python by default, so it may not need installation separately. However, pillow must be installed for image handling features to work.
     
-2. Open a terminal and navigate to the directory:
-    
-    ```
-    cd /home/yourusername/ir-logger/
-    ```
-    
-3. Ensure `tkinter` is installed:
-    
-    - Ubuntu/Debian:
-        
-        ```
-        sudo apt install python3-tk
-        ```
-        
-    - Fedora:
-        
-        ```
-        sudo dnf install python3-tkinter
-        ```
-        
-4. Run the script:
-    
-    ```
-    python3 ir-logger.py
-    ```
-    
-
-### Windows Installation
-
-1. Save the script as `ir-logger.py` in a directory (e.g., `C:\Users\YourDirectory\`).
-    
-2. Open PowerShell or Command Prompt and navigate to the directory:
-    
-    ```
-    cd C:\Users\YourDirectory\
-    ```
-    
-3. Run the script:
-    
-    ```
-    & "C:/Program Files/Python312/python.exe" ir-logger.py
-    ```
-    
-    _This launches the GUI for logging incident response data._
-    
-
----
 
 ## Usage Instructions
 
@@ -216,9 +154,3 @@ Upon launching, the GUI displays:
     
 - Report issues or suggest features by opening an issue on the GitHub repository.
     
-
----
-
-## License
-
-This project is licensed under MIT - see the LICENSE file for details (if applicable).
