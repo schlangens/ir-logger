@@ -31,11 +31,6 @@ The "Current Report" showing logged entries for `EventID 1001` after refreshing.
 An example of attaching a file, visible in the "Details" and saved to the event folder.
 
 
-### File Attachment
-
-![[Pasted image 20250220160453.png]]
-An example of attaching a file, visible in the "Details" and saved to the event folder.
-
 ---
 
 ## Instructions to Install Dependencies:
@@ -154,3 +149,9 @@ Upon launching, the GUI displays:
     
 - Report issues or suggest features by opening an issue on the GitHub repository.
     
+
+---
+
+## License
+
+This project is licensed under MIT - see the LICENSE file for details (if applicable).
