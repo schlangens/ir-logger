@@ -41,8 +41,7 @@ function temporaryDirectory(t) {
 }
 
 test('hashes the exact multi-chunk bytes persisted to disk', async (t) => {
-  const loaded = loadStorage(temporaryDirectory(t));
-  const storage = loaded.hashingEvidenceStorage || loaded.evidenceStorage;
+  const storage = loadStorage(temporaryDirectory(t)).hashingEvidenceStorage;
   const payload = deterministicBytes(512 * 1024 + 123);
   const response = await request(uploadApp(storage)).post('/upload').attach('file', payload, 'sample.bin');
   assert.equal(response.status, 200);
@@ -56,7 +55,7 @@ test('rejects oversized uploads and leaves the evidence directory empty', async 
   const directory = temporaryDirectory(t);
   const loaded = loadStorage(directory);
   assert.ok(loaded.hashingEvidenceStorage);
-  const storage = loaded.hashingEvidenceStorage || loaded.evidenceStorage;
+  const storage = loaded.hashingEvidenceStorage;
   const response = await request(uploadApp(storage, { fileSize: 32 })).post('/upload')
     .attach('file', Buffer.alloc(1024), 'too-large.bin');
   assert.equal(response.status, 500);
@@ -67,8 +66,7 @@ test('rejects oversized uploads and leaves the evidence directory empty', async 
 
 test('rejects mid-stream hashing failures without retaining a file', async (t) => {
   const directory = temporaryDirectory(t);
-  const loaded = loadStorage(directory);
-  const storage = loaded.hashingEvidenceStorage || loaded.evidenceStorage;
+  const storage = loadStorage(directory).hashingEvidenceStorage;
   const originalCreateHash = crypto.createHash;
   crypto.createHash = () => {
     let updates = 0;

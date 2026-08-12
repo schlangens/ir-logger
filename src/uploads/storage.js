@@ -8,24 +8,20 @@ const evidenceDir = process.env.EVIDENCE_DIR || path.join(__dirname, '../../data
 fs.mkdirSync(evidenceDir, { recursive: true });
 const MAX_FILE_SIZE = 25 * 1024 * 1024;
 
-function generatedFile(req, file) {
-  return {
-    destination: evidenceDir,
-    filename: `${nanoid(24)}.bin`,
-  };
+function generatedFilename() {
+  return `${nanoid(24)}.bin`;
 }
 
 const evidenceStorage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, generatedFile(req, file).destination),
-  filename: (req, file, cb) => cb(null, generatedFile(req, file).filename),
+  destination: (req, file, cb) => cb(null, evidenceDir),
+  filename: (req, file, cb) => cb(null, generatedFilename()),
 });
 
 const hashingEvidenceStorage = {
   _handleFile(req, file, cb) {
-    const generated = generatedFile(req, file);
-    const target = path.join(generated.destination, generated.filename);
+    const filename = generatedFilename();
+    const target = path.join(evidenceDir, filename);
     const hash = crypto.createHash('sha256');
-    let size = 0;
     let finished = false;
     const output = fs.createWriteStream(target);
     let sourceClosed = false;
@@ -36,7 +32,6 @@ const hashingEvidenceStorage = {
       transform(chunk, encoding, done) {
         try {
           hash.update(chunk);
-          size += chunk.length;
           done(null, chunk);
         } catch (error) {
           done(error);
@@ -64,22 +59,16 @@ const hashingEvidenceStorage = {
     file.stream.once('error', fail);
     hashing.once('error', fail);
     output.once('error', fail);
-    output.once('close', () => {
-      if (failure && !cleanupStarted) {
-        cleanupStarted = true;
-        fs.unlink(target, (unlinkError) => cb(failure || unlinkError));
-      }
-    });
     const complete = () => {
       if (!sourceClosed || !outputFinished) return;
       if (finished) return;
       finished = true;
       cb(null, {
-        destination: generated.destination,
-        filename: generated.filename,
+        destination: evidenceDir,
+        filename,
         path: target,
         sha256: hash.digest('hex'),
-        size,
+        size: output.bytesWritten,
       });
     };
     file.stream.once('close', () => {
