@@ -1,14 +1,14 @@
-const router = require("express").Router();
-router.get("/health", (req, res) => {
+const router = require('express').Router();
+router.get('/health', (req, res) => {
   try {
-    req.app.locals.db.prepare("SELECT 1").get();
+    req.app.locals.db.prepare('SELECT 1').get();
     res.json({
-      status: "ok",
+      status: 'ok',
       uptimeSeconds: Math.floor(process.uptime()),
-      db: "ok",
+      db: 'ok',
     });
   } catch (e) {
-    res.status(503).json({ status: "error", db: "error" });
+    res.status(503).json({ status: 'error', db: 'error' });
   }
 });
 module.exports = router;
