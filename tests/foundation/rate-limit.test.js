@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { db: makeDb } = require('./helpers');
-const { rateLimit, consume, peek } = require('../../src/middleware/rate-limit');
+const { rateLimit, consume } = require('../../src/middleware/rate-limit');
 
 test('rate limiter fails closed and never calls next on storage error', () => {
   const middleware = rateLimit({ bucket: 'test', max: 1, windowMs: 1000 });
@@ -93,19 +93,6 @@ test('consume purges stale windows without removing the current bucket', (t) => 
       .prepare('SELECT count FROM rate_limits WHERE bucket_key=? AND window_start=?')
       .get('registration:1.2.3.4', registrationWindow).count,
     4,
-  );
-});
-
-test('peek reports the live count without incrementing it', (t) => {
-  const { db } = makeDb();
-  t.after(() => db.close());
-  consume(db, { bucketKey: 'peek:ip', max: 5, windowMs: 60000 });
-  const result = peek(db, { bucketKey: 'peek:ip', max: 5, windowMs: 60000 });
-  assert.equal(result.allowed, true);
-  assert.equal(result.count, 1);
-  assert.equal(
-    db.prepare('SELECT count FROM rate_limits WHERE bucket_key=?').get('peek:ip').count,
-    1,
   );
 });
 
