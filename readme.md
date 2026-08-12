@@ -1,5 +1,13 @@
 # Incident Response Logger
 
+> **v1 (this desktop tool) is still fully supported and works standalone,
+> exactly as documented below.** A hosted web application, Incident Logger
+> v2, is also being built on top of it — a shared, multi-analyst version
+> with live timelines, MITRE ATT&CK tagging, hashed evidence, and report
+> export. See [`SPEC.md`](SPEC.md) for the full v2 specification. v1 will
+> gain an optional, opt-in mode to sync its entries into v2, but never
+> requires the server to work.
+
 The "Incident Response Logger" is a graphical user interface (GUI) tool built with Python and `tkinter` to assist incident response (IR) analysts in logging and organizing findings during an incident investigation. It supports logging technical details, timeline events, file attachments, and image captures, with options for both event-specific folder outputs (`Incident_<EventID>/`) or standalone Markdown files.
 
 ## Features
