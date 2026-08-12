@@ -18,12 +18,22 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Reads the Node version straight from package.json's "engines"
-      # field (setup-node's package.json support), so CI can't silently
-      # drift from the version this repo actually requires.
+      # Reads the exact Node floor straight from package.json's
+      # "engines" field, so CI can't silently drift from the version
+      # this repo actually requires. This is deliberately pinned to
+      # that floor (not "whatever newer version also satisfies it") so
+      # CI proves the app works on the minimum version AGENTS.md
+      # documents, which is what the require(esm) reasoning there is
+      # actually about.
+      - name: Read Node version floor from package.json
+        id: node-version
+        run: |
+          version=$(node -p "require('./package.json').engines.node.replace(/^[^0-9]*/, '')")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
       - uses: actions/setup-node@v7
         with:
-          node-version-file: package.json
+          node-version: ${{ steps.node-version.outputs.version }}
 
       - name: Install Node dependencies
         run: npm ci
