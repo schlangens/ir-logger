@@ -769,6 +769,14 @@ can produce an FTS5 syntax error — a malformed query returns `200` with
 however many (possibly zero) results match the literal phrase, never a
 `500`.
 
+Before the `MATCH` argument is built, NUL and the entire C0 control range
+are stripped from `q` and `q` is capped at 200 characters. `snippet`
+results are safe for HTML insertion: the server passes non-HTML sentinel
+markers to SQLite `snippet()`, HTML-escapes the returned string, then
+replaces the sentinels with `<b>`/`</b>`. Client code must still treat the
+`snippet` as trusted-server HTML (it is already escaped); it must not run
+any additional unescaped user content through `innerHTML`.
+
 ### 5.9 Export + audit
 
 | Method | Path | Auth | Response |
