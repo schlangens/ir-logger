@@ -639,6 +639,95 @@ Conventions used throughout this section:
   resource belongs to. "Auth: token" means a `Authorization: Bearer
   <token>` header validated against `api_tokens.token_hash`.
 
+### Response field naming — Decision
+
+**All JSON response bodies use `snake_case` field names.** A response field
+name is always either the literal underlying database column name (§4) or,
+for a computed/joined field, a plain `snake_case` compound name in the same
+style (`entry_count`, `last_activity_at`, `author_name`). This governs
+responses only — it does not change any request body's field names.
+
+This was not always true as shipped: incident and entry responses
+(§5.4–§5.5) were written as raw database rows, which are naturally
+`snake_case`, while evidence, custody, and search responses (§5.6–§5.8)
+were hand-mapped to `camelCase` by their own service functions, and the
+audit-verify, demo, workspace-invite/token, health, and v1-ingest
+responses picked up the same `camelCase` habit independently. No single
+round did this "wrong" — earlier drafts of this document were themselves
+inconsistent on the point — but left alone it becomes a permanent split
+the moment a frontend hard-codes both shapes.
+
+**The count behind this decision** (counted directly against
+`src/routes/*.js` and the service functions that build each response,
+not guessed): weighing endpoints by how many multi-word response fields
+they actually carry — the metric that best reflects real API surface,
+since a bare endpoint count treats a two-field response the same as a
+seven-field one — `snake_case` accounts for 51 response-field occurrences
+across 8 endpoints (the incidents endpoints of §5.4, the entries endpoints
+of §5.5, and the raw `audit_log` rows of §5.9's list route), versus 28
+`camelCase` response-field occurrences spread across 12 smaller endpoints
+(evidence, custody, search, demo, workspace invite/tokens, audit/verify,
+health, and v1-ingest). By distinct field *name* count it is closer (20
+distinct `snake_case` names vs. 16 distinct `camelCase` names), and by raw
+endpoint count `camelCase` is actually slightly ahead (12 vs. 8) — the
+picture is genuinely mixed by every metric except the field-occurrence
+count, which is why cost-to-change is the deciding factor, not a close
+count alone. `GET /api/workspaces/:id` is the one response that is
+internally mixed today (the workspace object's own fields — `is_demo`,
+`expires_at`, `created_at` — are `snake_case`; its nested `members[].userId`
+is `camelCase`) — the concrete case of "SPEC.md is itself mixed" made
+visible in running code.
+
+**Cost to change** breaks the tie decisively toward `snake_case`: the
+incidents and entries endpoints are the two highest-traffic, most
+pervasively consumed resources in the app (rendered on nearly every page,
+broadcast over SSE, read by PDF/Markdown export) and are raw database rows
+with *no* mapping layer at all today — making them `camelCase` would mean
+adding a new mapping layer to the app's most central, most heavily-tested
+code paths for no functional gain. The `camelCase` endpoints, by contrast,
+are already produced by small, isolated, hand-written mapping functions
+(`services/evidence.js`'s `metadata()`, `services/custody.js`'s `list()`,
+`services/search.js`'s `search()` result mapper) or a handful of one-line
+response-object literals (`routes/demo.js`, `routes/workspaces.js`,
+`routes/audit.js`, `routes/health.js`, `routes/v1-ingest.js`) — renaming
+the keys those functions already build is a small, mechanical, low-risk
+change confined to about a dozen call sites, not a new abstraction over
+core data.
+
+**`payload_json` on the audit endpoints (§5.9) is a parsed JSON object in
+the response, never a JSON-encoded string.** The server already validates
+it as `JSON.stringify`-produced output at write time
+(`services/audit.js`'s `append()`), so the value is always well-formed
+JSON by construction; returning it pre-parsed removes a defensive
+`JSON.parse()` (and the failure handling that call would otherwise need)
+from every consumer, for zero loss of information and zero added risk.
+This is a value-type fix, not a key-naming one — `payload_json` is already
+the correct key name under the decision above.
+
+**Violation inventory** (the exact response fields that must be renamed to
+conform — this is a work order for a follow-up code change; this document
+does not itself change any code):
+
+| Endpoint | Response field(s) today | Corrected field name(s) |
+|---|---|---|
+| `POST /api/demo` (create and reuse-existing-grant responses) | `workspaceId`, `incidentId` | `workspace_id`, `incident_id` |
+| `GET /api/workspaces/:id` (`members[]` only — the `workspace` object is already correct) | `members[].userId` | `members[].user_id` |
+| `POST /api/workspaces/:id/invite` | `inviteUrl` | `invite_url` |
+| `POST /api/workspaces/:id/tokens` | `tokenId` | `token_id` |
+| `GET /api/workspaces/:id/tokens` (`tokens[]`) | `tokens[].createdAt`, `tokens[].lastUsedAt` | `tokens[].created_at`, `tokens[].last_used_at` |
+| `POST /api/incidents/:id/evidence`, `GET /api/incidents/:id/evidence`, `GET /api/evidence/:id`, and the `evidence.uploaded` SSE event (all four share `services/evidence.js`'s `metadata()`) | `incidentId`, `entryId`, `uploadedBy`, `uploadedAt` | `incident_id`, `entry_id`, `uploaded_by`, `uploaded_at` |
+| `GET /api/evidence/:id/custody` (`events[]`) | `events[].evidenceId`, `events[].actorUserId` | `events[].evidence_id`, `events[].actor_user_id` |
+| `GET /api/workspaces/:id/search` (`results[]`) | `results[].incidentId`, `results[].incidentRef`, `results[].incidentTitle`, `results[].entryId` | `results[].incident_id`, `results[].incident_ref`, `results[].incident_title`, `results[].entry_id` |
+| `GET /api/workspaces/:id/audit/verify` (present only when `valid:false`) | `brokenAtId` | `broken_at_id` |
+| `entry.technique_tagged` SSE event | `entryId`, `techniqueId` | `entry_id`, `technique_id` |
+| `GET /health` | `uptimeSeconds` | `uptime_seconds` |
+| `POST /api/v1/ingest` (desktop sync response — not called by the web frontend, included for completeness of the API surface) | `incidentId`, `entryId` | `incident_id`, `entry_id` |
+
+`GET /api/workspaces/:id/audit`'s field *names* are already correct
+(`workspace_id`, `actor_user_id`, `target_type`, `target_id`, `prev_hash`,
+`payload_json`, etc. — it returns a raw `audit_log` row); its only defect
+is `payload_json`'s value type, covered above, not a rename.
+
 ### 5.1 Health
 
 | Method | Path | Auth | Response |

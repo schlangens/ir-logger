@@ -233,3 +233,18 @@ description rather than editing it — foundation files in particular
 never modified by them. If your brief's acceptance criteria turn out to be
 impossible without a change to a file you don't own, say so explicitly in
 the PR rather than making the edit anyway.
+
+## 8. JSON response field naming — binding for every route
+
+Every JSON response body returned by any route uses **`snake_case`** field
+names: either the literal underlying database column name, or a plain
+`snake_case` compound name for a computed/joined field (`entry_count`,
+`last_activity_at`, `author_name`, and the like). See `SPEC.md`'s "Response
+field naming — Decision" subsection (start of §5) for the counts behind
+this choice and the exact list of endpoints that still need to be migrated
+to it — that list is a real work order, not yet done. `payload_json` on the
+audit endpoints is returned as a parsed JSON object, never a JSON-encoded
+string. This rule governs response bodies only; request body field names
+are unaffected. Any route added after this rule lands must not introduce a
+`camelCase` or internally-mixed response field — a PR that does will be
+sent back for revision, the same as an undeclared new dependency (§1).
