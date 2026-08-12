@@ -62,6 +62,13 @@ jobs:
             exit 1
           fi
 
+      # Supply-chain check. This repo's pitch is that claims are verified
+      # rather than assumed, so its own dependencies get the same treatment.
+      # --omit=dev because a dev-only advisory should not gate a merge; a
+      # production advisory should. Currently clean.
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"

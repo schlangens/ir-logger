@@ -31,7 +31,7 @@ visit. See [`ROADMAP.md`](ROADMAP.md) for what's shipped and what's left.
 
 ## Running the tests
 
-Node test suite (164 tests, using Node's built-in test runner — no extra
+Node test suite (166 tests, using Node's built-in test runner — no extra
 install beyond `npm install`):
 
 ```

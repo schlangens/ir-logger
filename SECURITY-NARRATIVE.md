@@ -13,7 +13,7 @@ coding agents that built this system live in [`AGENTS.md`](AGENTS.md). This
 document is the guided tour through the security-relevant parts of both, plus
 the parts that only live in the git history and the test suite.
 
-**Where this project actually stands:** the backend is built and tested (164
+**Where this project actually stands:** the backend is built and tested (166
 Node tests + 9 Python tests, all passing as of this writing). There is no
 browser interface yet and nothing is deployed anywhere — no live URL exists to
 visit. Everything described below was exercised against a real running
@@ -189,9 +189,9 @@ for an address in that domain. The safety here lived entirely outside the
 application's own code, in a property of the domain name, not in anything
 `resolveGoogleUser()` checked.
 
-The honest move — and the one actually taken — was not to write a test
-asserting the fix while the code still had the gap. Doing so would have been a
-false assertion against the code as it stood that day. Instead, the gap was
+No test asserting the fix was written while the code still had the gap — that
+would have been a false assertion against the code as it stood that day.
+Instead, the gap was
 documented in detail directly next to the pinned local-login test in
 `tests/foundation/security-live-audit.test.js`, in commit
 [`c3716c2`](https://github.com/schlangens/ir-logger/commit/c3716c2e365dd5c9109f30c8bcd6c6f8572aadc7)
