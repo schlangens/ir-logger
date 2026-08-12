@@ -1,4 +1,5 @@
 const bcrypt = require('bcrypt');
+const crypto = require('node:crypto');
 const passport = require('passport');
 const LocalStrategy = require('passport-local').Strategy;
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
@@ -51,8 +52,11 @@ function configurePassport(db) {
 // it can be exercised directly in tests without driving a full OAuth
 // handshake.
 function resolveGoogleUser(db, profile) {
-  const email = profile.emails?.[0]?.value?.toLowerCase();
-  if (!email) return false;
+  const { email, verified, emails } = readGoogleEmail(profile);
+  if (!email) {
+    logGoogleDeny(db, profile, 'no_usable_email', undefined, emails);
+    return false;
+  }
   // Google's profile reports whether the account holder has actually
   // verified control of this address (`email_verified` on the raw profile,
   // surfaced here as `emails[0].verified`). An unverified address is not
@@ -61,7 +65,10 @@ function resolveGoogleUser(db, profile) {
   // doesn't actually control the mailbox land on (or create) an account for
   // that email. Fail closed: only an explicit `true` is accepted; anything
   // absent, malformed, or falsy is denied.
-  if (profile.emails?.[0]?.verified !== true) return false;
+  if (verified !== true) {
+    logGoogleDeny(db, profile, 'unverified_email', email, emails);
+    return false;
+  }
   let user = db.prepare('SELECT id,email,name FROM users WHERE google_id=?').get(profile.id);
   if (user) return user;
   user = db.prepare('SELECT id,email,name FROM users WHERE email=?').get(email);
@@ -77,6 +84,63 @@ function resolveGoogleUser(db, profile) {
     profile.id,
   );
   return { id, email, name: profile.displayName || email };
+}
+
+function readGoogleEmail(profile) {
+  try {
+    const emails = profile?.emails;
+    const primary = emails?.[0];
+    const value = primary?.value;
+    return {
+      email: typeof value === 'string' ? value.toLowerCase() : undefined,
+      verified: primary?.verified,
+      emails,
+    };
+  } catch (_) {
+    return { email: undefined, verified: undefined, emails: undefined };
+  }
+}
+
+function digestGoogleValue(value) {
+  try {
+    const normalized = typeof value === 'string' ? value : String(value ?? '');
+    return crypto.createHash('sha256').update(normalized).digest('hex').slice(0, 16);
+  } catch (_) {
+    return 'unavailable';
+  }
+}
+
+function logGoogleDeny(db, profile, reason, email, emails) {
+  try {
+    let localAccount = 'unknown';
+    let profilePreviouslyLinked = 'unknown';
+    let profileId;
+    try {
+      profileId = profile?.id;
+    } catch (_) {}
+    try {
+      if (email) {
+        localAccount =
+          db.prepare('SELECT 1 FROM users WHERE lower(email)=?').get(email) !== undefined;
+      } else {
+        localAccount = 'not_applicable';
+      }
+      profilePreviouslyLinked =
+        Boolean(profileId) &&
+        db.prepare('SELECT 1 FROM users WHERE google_id=?').get(profileId) !== undefined;
+    } catch (_) {}
+    const secondaryVerified =
+      reason === 'unverified_email' &&
+      Array.isArray(emails) &&
+      emails.slice(1).some((entry) => entry?.verified === true);
+    const diagnosticReason = secondaryVerified
+      ? 'unverified_primary_with_verified_secondary'
+      : reason;
+    const emailDigest = email ? crypto.createHash('sha256').update(email).digest('hex') : 'none';
+    console.warn(
+      `[google-auth] deny reason=${diagnosticReason} localAccount=${localAccount} profilePreviouslyLinked=${profilePreviouslyLinked} profileIdSha256=${digestGoogleValue(profileId)} emailSha256=${emailDigest}`,
+    );
+  } catch (_) {}
 }
 
 module.exports = { configurePassport, hashPassword, resolveGoogleUser };
