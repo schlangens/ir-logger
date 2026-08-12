@@ -118,6 +118,18 @@ test('rejects an over-cap file and removes any partial file', async (t) => {
   assert.equal(db.prepare('SELECT COUNT(*) AS count FROM evidence').get().count, 0);
 });
 
+test('rejects a demo over-cap file and removes any partial file', async (t) => {
+  const { app, db, owner, incidentId } = await setup({ demo: true });
+  t.after(() => close(app, db));
+  const before = fs.readdirSync(evidenceDir).sort();
+  const response = await owner
+    .post(`/api/incidents/${incidentId}/evidence`)
+    .attach('file', Buffer.alloc(5 * 1024 * 1024 + 1), 'demo-too-large.bin');
+  assert.equal(response.status, 413);
+  assert.deepEqual(fs.readdirSync(evidenceDir).sort(), before);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM evidence').get().count, 0);
+});
+
 test('demo evidence row cap rejects a sixth upload before writing', async (t) => {
   const { app, db, owner, ownerId, incidentId } = await setup({ demo: true });
   t.after(() => close(app, db));
@@ -145,32 +157,60 @@ test('workspace total-byte cap rejects a new upload', async (t) => {
   assert.equal(db.prepare('SELECT COUNT(*) AS count FROM evidence').get().count, 1);
 });
 
-test('download is octet-stream, attachment-only, and sanitizes the filename', async (t) => {
+test('download is octet-stream for an uploaded image/png file', async (t) => {
   const fixture = fixtureBytes('download me');
-  const { app, db, owner, ownerId, incidentId } = await setup();
+  const { app, db, owner, incidentId } = await setup();
   t.after(() => close(app, db));
-  const storedPath = path.join(evidenceDir, 'download.bin');
-  fs.writeFileSync(storedPath, fixture);
-  insertFixture(db, {
-    id: 'download-evidence',
-    incidentId,
-    userId: ownerId,
-    storedPath,
-    filename: '../../etc/passwd',
-  });
-  db.prepare('UPDATE evidence SET mime=? WHERE id=?').run('image/png', 'download-evidence');
-  const response = await owner.get('/api/evidence/download-evidence/download');
+  const upload = await owner
+    .post(`/api/incidents/${incidentId}/evidence`)
+    .attach('file', fixture, { filename: 'shot.png', contentType: 'image/png' });
+  assert.equal(upload.status, 201);
+  const evidenceId = upload.body.evidence.id;
+  assert.equal(
+    db.prepare('SELECT mime FROM evidence WHERE id=?').get(evidenceId).mime,
+    'image/png',
+  );
+  const response = await owner.get(`/api/evidence/${evidenceId}/download`);
   assert.equal(response.status, 200);
   assert.equal(response.headers['content-type'], 'application/octet-stream');
   assert.match(response.headers['content-disposition'], /^attachment; filename="[^"]+"$/);
-  assert.equal(response.headers['content-disposition'].includes('../../'), false);
+  assert.match(response.headers['content-disposition'], /attachment; filename="shot\.png"/);
   assert.equal(response.body.toString(), fixture.toString());
-  assert.equal(
-    db.prepare('SELECT stored_path FROM evidence WHERE id=?').get('download-evidence').stored_path.includes('../../'),
-    false,
-  );
   assert.equal(db.prepare('SELECT COUNT(*) AS count FROM custody_events WHERE action=?').get('downloaded').count, 1);
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM audit_log WHERE action='evidence.downloaded'").get().count, 1);
+});
+
+test('sanitizes uploaded filenames and stores files under generated names', async (t) => {
+  const fixture = fixtureBytes('sanitized filename');
+  const { app, db, owner, incidentId } = await setup();
+  t.after(() => close(app, db));
+  const upload = await owner
+    .post(`/api/incidents/${incidentId}/evidence`)
+    .attach('file', fixture, { filename: '../../etc/passwd', contentType: 'text/plain' });
+  assert.equal(upload.status, 201);
+  const evidenceId = upload.body.evidence.id;
+  const row = db.prepare('SELECT filename,stored_path FROM evidence WHERE id=?').get(evidenceId);
+  // Multer strips the path components before the route receives originalname.
+  assert.equal(row.filename, 'passwd');
+  assert.equal(row.stored_path.startsWith(`${evidenceDir}${path.sep}`), true);
+  assert.equal(path.basename(row.stored_path).match(/^[A-Za-z0-9_-]{24}\.bin$/) !== null, true);
+  assert.equal(row.stored_path.includes('../../etc/passwd'), false);
+  assert.equal(row.stored_path.includes('passwd'), false);
+  assert.equal(row.stored_path.includes('etc'), false);
+  assert.equal(row.stored_path.includes('..'), false);
+  assert.equal(row.stored_path.includes('/etc/'), false);
+  assert.equal(row.stored_path.includes('\\'), false);
+  assert.equal(row.filename.includes('/'), false);
+  assert.equal(row.filename.includes('\\'), false);
+  assert.equal(
+    upload.body.evidence.filename,
+    row.filename,
+  );
+  const download = await owner.get(`/api/evidence/${evidenceId}/download`);
+  assert.equal(download.status, 200);
+  assert.equal(download.headers['content-disposition'].includes('/'), false);
+  assert.equal(download.headers['content-disposition'].includes('\\'), false);
+  assert.match(download.headers['content-disposition'], /filename="passwd"/);
 });
 
 test('metadata view and list omit stored_path and append paired custody/audit rows', async (t) => {
@@ -220,7 +260,6 @@ test('viewer cannot upload evidence', async (t) => {
     .attach('file', fixtureBytes(), 'blocked.txt');
   assert.equal(response.status, 403);
   assert.equal(db.prepare('SELECT COUNT(*) AS count FROM evidence').get().count, 0);
-  await owner.get(`/api/incidents/${incidentId}/evidence`);
 });
 
 test('upload rolls back evidence and custody when audit insertion fails', async (t) => {
@@ -242,7 +281,32 @@ test('upload rolls back evidence and custody when audit insertion fails', async 
 
 async function crossTenantSetup() {
   const first = await setup();
-  const second = await setup();
+  const second = await register(
+    first.app,
+    `cross-tenant-${Date.now()}-${Math.random()}@example.test`,
+    'Other tenant user',
+  );
+  const secondWorkspaceId = `workspace-${Math.random()}`;
+  first.db
+    .prepare('INSERT INTO workspaces (id,name,is_demo) VALUES (?,?,0)')
+    .run(secondWorkspaceId, 'Other workspace');
+  first.db
+    .prepare('INSERT INTO memberships (user_id,workspace_id,role) VALUES (?,?,?)')
+    .run(second.id, secondWorkspaceId, 'owner');
+  const secondIncidentId = `incident-${Math.random()}`;
+  // Test fixture: Round 2a incidents routes are not present on this branch.
+  first.db
+    .prepare(
+      'INSERT INTO incidents (id,workspace_id,ref,title,severity,created_by) VALUES (?,?,?,?,?,?)',
+    )
+    .run(
+      secondIncidentId,
+      secondWorkspaceId,
+      'IR-TEST-' + Math.floor(Math.random() * 100000),
+      'Other incident',
+      'low',
+      second.id,
+    );
   const storedPath = path.join(evidenceDir, `cross-${Math.random()}.bin`);
   fs.writeFileSync(storedPath, 'cross tenant');
   insertFixture(first.db, {
@@ -251,32 +315,23 @@ async function crossTenantSetup() {
     userId: first.ownerId,
     storedPath,
   });
-  return { first, second };
+  return { first, second: { owner: second.agent } };
 }
 
 test('bare evidence metadata route returns 404 across tenants', async (t) => {
   const { first, second } = await crossTenantSetup();
-  t.after(() => {
-    close(first.app, first.db);
-    close(second.app, second.db);
-  });
+  t.after(() => close(first.app, first.db));
   assert.equal((await second.owner.get('/api/evidence/cross-tenant-evidence')).status, 404);
 });
 
 test('bare evidence download route returns 404 across tenants', async (t) => {
   const { first, second } = await crossTenantSetup();
-  t.after(() => {
-    close(first.app, first.db);
-    close(second.app, second.db);
-  });
+  t.after(() => close(first.app, first.db));
   assert.equal((await second.owner.get('/api/evidence/cross-tenant-evidence/download')).status, 404);
 });
 
 test('bare evidence custody route returns 404 across tenants', async (t) => {
   const { first, second } = await crossTenantSetup();
-  t.after(() => {
-    close(first.app, first.db);
-    close(second.app, second.db);
-  });
+  t.after(() => close(first.app, first.db));
   assert.equal((await second.owner.get('/api/evidence/cross-tenant-evidence/custody')).status, 404);
 });
