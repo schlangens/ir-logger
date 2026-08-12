@@ -125,6 +125,95 @@ test('uploads evidence with a single-pass hash and broadcasts metadata', async (
   );
 });
 
+function deterministicBytes(length) {
+  const bytes = Buffer.alloc(length);
+  for (let i = 0; i < bytes.length; i++) bytes[i] = (i * 31 + 17) % 256;
+  return bytes;
+}
+
+function chunkedMultipartBody(filename, contentType, fileBuffer, boundary) {
+  return Buffer.concat([
+    Buffer.from(
+      `--${boundary}\r\n` +
+        `Content-Disposition: form-data; name="file"; filename="${filename}"\r\n` +
+        `Content-Type: ${contentType}\r\n\r\n`,
+    ),
+    fileBuffer,
+    Buffer.from(`\r\n--${boundary}--\r\n`),
+  ]);
+}
+
+async function chunkedUpload({ port, cookie, incidentId, fileBuffer, filename, contentType = 'application/octet-stream' }) {
+  const boundary = `----ChunkUpload${crypto.randomBytes(8).toString('hex')}`;
+  const body = chunkedMultipartBody(filename, contentType, fileBuffer, boundary);
+
+  return new Promise((resolve, reject) => {
+    const req = http.request(
+      {
+        host: '127.0.0.1',
+        port,
+        path: `/api/incidents/${incidentId}/evidence`,
+        method: 'POST',
+        headers: {
+          'Content-Type': `multipart/form-data; boundary=${boundary}`,
+          'Content-Length': body.length,
+          Cookie: cookieValue(cookie),
+        },
+      },
+      (res) => {
+        const chunks = [];
+        res.on('data', (chunk) => chunks.push(chunk));
+        res.on('end', () => {
+          const raw = Buffer.concat(chunks).toString();
+          try {
+            resolve({ status: res.statusCode, body: raw ? JSON.parse(raw) : null, headers: res.headers });
+          } catch (error) {
+            reject(new Error(`Non-JSON response: ${raw}`));
+          }
+        });
+      },
+    );
+    req.on('error', reject);
+    const chunkSize = 16 * 1024;
+    for (let offset = 0; offset < body.length; offset += chunkSize) {
+      req.write(body.subarray(offset, offset + chunkSize));
+    }
+    req.end();
+  });
+}
+
+test('uploads a multi-chunk file and records a SHA-256 matching the bytes on disk', async (t) => {
+  const { app, db, ownerCookie, incidentId, ownerId } = await setup();
+  const server = app.listen(0);
+  t.after(() => {
+    server.close();
+    close(app, db);
+  });
+
+  const payload = deterministicBytes(512 * 1024 + 123);
+  const expectedSha256 = crypto.createHash('sha256').update(payload).digest('hex');
+  const response = await chunkedUpload({
+    port: server.address().port,
+    cookie: ownerCookie,
+    incidentId,
+    fileBuffer: payload,
+    filename: 'chunked.bin',
+    contentType: 'application/octet-stream',
+  });
+
+  assert.equal(response.status, 201);
+  assert.equal(response.body.evidence.sha256, expectedSha256);
+  const row = db.prepare('SELECT * FROM evidence WHERE id=?').get(response.body.evidence.id);
+  assert.equal(row.uploaded_by, ownerId);
+  assert.equal(row.size, payload.length);
+  assert.equal(fs.statSync(row.stored_path).size, payload.length);
+  assert.equal(
+    crypto.createHash('sha256').update(fs.readFileSync(row.stored_path)).digest('hex'),
+    expectedSha256,
+  );
+  assert.equal(row.filename, 'chunked.bin');
+});
+
 test('rejects an over-cap file and removes any partial file', async (t) => {
   const { app, db, owner, incidentId } = await setup();
   t.after(() => close(app, db));

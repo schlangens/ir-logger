@@ -1,12 +1,11 @@
 const router = require('express').Router();
-const crypto = require('node:crypto');
 const fs = require('node:fs');
 const multer = require('multer');
 const evidence = require('../services/evidence');
 const custody = require('../services/custody');
 const { resolveWorkspaceAccess, resolveActor, requireSession } = require('../middleware/workspace-guard');
 const { rateLimit } = require('../middleware/rate-limit');
-const { evidenceStorage } = require('../uploads/storage');
+const { createUpload } = require('../uploads/storage');
 const hub = require('../sse/hub');
 
 const MB = 1024 * 1024;
@@ -51,22 +50,8 @@ function removeWrittenFile(req, file) {
   }
 }
 
-// Delegate writing to Round 1's configured disk-storage engine while hashing
-// the exact stream it receives; this route does not redefine that engine.
-const hashingStorage = {
-  _handleFile(req, file, callback) {
-    const hash = crypto.createHash('sha256');
-    file.stream.on('data', (chunk) => hash.update(chunk));
-    evidenceStorage._handleFile(req, file, (error, info) => {
-      if (error) return callback(error);
-      req._evidenceStoredPath = info.path;
-      callback(null, { ...info, sha256: hash.digest('hex') });
-    });
-  },
-  _removeFile(req, file, callback) {
-    return evidenceStorage._removeFile(req, file, callback);
-  },
-};
+// Use the single-pass Transform-stream storage engine from src/uploads/storage.js.
+// This route does not reimplement hashing or _handleFile/_removeFile.
 
 router.use(['/incidents/:id/evidence', '/evidence/:id'], requireSession);
 
@@ -121,13 +106,10 @@ router.post('/incidents/:id/evidence', evidenceUploadRateLimit, (req, res, next)
       return res.status(409).json({ error: 'Evidence total size limit exceeded' });
     }
 
-    const upload = multer({
-      storage: hashingStorage,
-      limits: {
-        fileSize: isDemo ? DEMO_FILE_CAP : NORMAL_FILE_CAP,
-        files: 1,
-        fields: 10,
-      },
+    const upload = createUpload({
+      fileSize: isDemo ? DEMO_FILE_CAP : NORMAL_FILE_CAP,
+      files: 1,
+      fields: 10,
     });
     upload.single('file')(req, res, (uploadError) => {
       if (uploadError) {
