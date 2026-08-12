@@ -97,9 +97,59 @@ test('a profile without a usable email is denied with a diagnostic', (t) => {
   );
   assert.equal(result, false);
   assert.match(lines[0], /reason=no_usable_email/);
-  assert.match(lines[0], /profileId=google-no-email/);
+  assert.match(lines[0], /profileIdSha256=[0-9a-f]{16}/);
   assert.match(lines[0], /localAccount=not_applicable/);
   assert.match(lines[0], /profilePreviouslyLinked=false/);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM users').get().count, 0);
+});
+
+test('hostile profile ids cannot inject or inflate denial diagnostics', (t) => {
+  const { db } = makeDb();
+  t.after(() => db.close());
+  const ids = [
+    'evil\n[google-auth] deny reason=FORGED_ALLOW profileId=admin',
+    'evil\r reason=allow ',
+    'x reason=allow localAccount=true',
+    'x'.repeat(5000),
+  ];
+  for (const id of ids) {
+    const { result, lines } = captureWarnings(() =>
+      resolveGoogleUser(db, {
+        id,
+        displayName: 'Hostile',
+        emails: [{ value: 'hostile@example.test', verified: false }],
+      }),
+    );
+    assert.equal(result, false);
+    assert.equal(lines.length, 1);
+    assert.equal(lines[0].includes('\n'), false);
+    assert.equal(lines[0].includes('\r'), false);
+    assert.match(lines[0], /reason=unverified_email/);
+    assert.match(lines[0], /profileIdSha256=[0-9a-f]{16}/);
+    assert.ok(lines[0].length < 300);
+    assert.equal(lines[0].includes(id), false);
+  }
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM users').get().count, 0);
+});
+
+test('malformed email values deny with diagnostics and write no users', (t) => {
+  const { db } = makeDb();
+  t.after(() => db.close());
+  const cases = [
+    { id: 'google-number-email', emails: [{ value: 123, verified: true }] },
+    {
+      id: 'google-throwing-emails',
+      get emails() {
+        throw new Error('malformed profile');
+      },
+    },
+  ];
+  for (const profile of cases) {
+    const { result, lines } = captureWarnings(() => resolveGoogleUser(db, profile));
+    assert.equal(result, false);
+    assert.equal(lines.length, 1);
+    assert.match(lines[0], /reason=no_usable_email/);
+  }
   assert.equal(db.prepare('SELECT COUNT(*) AS count FROM users').get().count, 0);
 });
 
