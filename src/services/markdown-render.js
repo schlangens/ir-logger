@@ -28,7 +28,7 @@ function inlineRuns(source) {
     } else if (match[2] !== undefined) {
       const href = safeHref(match[3]);
       if (href) {
-        runs.push({ type: 'link', text: match[2], href: escapeHtml(href) });
+        runs.push({ type: 'link', text: match[2], href });
       } else {
         runs.push({ type: 'text', text: match[0] });
       }
@@ -65,7 +65,12 @@ function renderMarkdown(input) {
     list = null;
   };
   const flushCode = () => {
-    if (code) blocks.push({ type: 'code', text: code.join('\n') });
+    if (code) {
+      blocks.push({
+        type: 'code',
+        text: code.map((line) => escapeHtml(line)).join('\n'),
+      });
+    }
     code = null;
   };
 
@@ -118,4 +123,12 @@ function renderMarkdown(input) {
   return blocks;
 }
 
-module.exports = { renderMarkdown, escapeHtml };
+const unescapeHtml = (value) =>
+  String(value)
+    .replaceAll('&quot;', '"')
+    .replaceAll('&#39;', "'")
+    .replaceAll('&lt;', '<')
+    .replaceAll('&gt;', '>')
+    .replaceAll('&amp;', '&');
+
+module.exports = { renderMarkdown, escapeHtml, unescapeHtml };

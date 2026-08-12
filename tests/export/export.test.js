@@ -5,6 +5,7 @@ const { db: makeDb } = require('../foundation/helpers');
 const { createApp } = require('../../src/server');
 const payloads = require('../fixtures/markdown-xss-payloads');
 const { renderMarkdown } = require('../../src/services/markdown-render');
+const { getPdfRunText } = require('../../src/services/export-pdf');
 
 async function register(app, email, name) {
   const agent = request.agent(app);
@@ -211,11 +212,11 @@ test('legitimate Markdown remains intact and structured', async (t) => {
   ).body.workspace.id;
   const body = [
     'x < 5 and y = 3',
-    '[text](https://example.com/a?b=1)',
+    '[text](https://example.com/a?b=1&c=2)',
     '**bold** `code`',
     '',
     '```',
-    'fenced',
+    'fenced < &',
     '```',
     '',
     '- bullet',
@@ -233,8 +234,17 @@ test('legitimate Markdown remains intact and structured', async (t) => {
   const markdown = await owner.get('/api/incidents/incident-id-0001/export.md');
   assert.equal(markdown.status, 200);
   assert.match(markdown.text, /x < 5 and y = 3/);
-  assert.match(markdown.text, /\[text\]\(https:\/\/example\.com\/a\?b=1\)/);
+  assert.match(markdown.text, /\[text\]\(https:\/\/example\.com\/a\?b=1&c=2\)/);
+  assert.match(markdown.text, /fenced < &/);
   assert.doesNotMatch(markdown.text, /&#61;|&#58;|&lt;/);
+});
+
+test('PDF drawing text decodes renderer entities', () => {
+  const body = "don't cross A & B <tag>";
+  const runs = renderMarkdown(body)[0].inlines;
+  const drawn = runs.map(getPdfRunText).join('');
+  assert.equal(drawn, body);
+  assert.doesNotMatch(drawn, /&#39;|&amp;|&lt;/);
 });
 
 test('workspace guard failures deny exports before writing audit rows', async (t) => {

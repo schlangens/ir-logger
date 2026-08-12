@@ -1,5 +1,5 @@
 const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
-const { renderMarkdown } = require('./markdown-render');
+const { renderMarkdown, unescapeHtml } = require('./markdown-render');
 
 function getReportData(db, incidentId) {
   const incident = db
@@ -122,10 +122,7 @@ async function generatePdf(db, incidentId) {
         if (x !== margin + indent) flush();
         continue;
       }
-      const text = run.type === 'link'
-        ? `${run.text} (${run.href})`
-        : run.text || '';
-      const safeText = text.replace(/[\u0000-\u001f\u007f]/g, ' ');
+      const safeText = getPdfRunText(run);
       const font = forceFont || (run.type === 'bold' ? bold : regular);
       for (const word of safeText.split(/(\s+)/)) {
         const width = font.widthOfTextAtSize(word, textSize);
@@ -231,4 +228,11 @@ async function generatePdf(db, incidentId) {
   return Buffer.from(await document.save());
 }
 
-module.exports = { generatePdf, getReportData };
+function getPdfRunText(run) {
+  const text = run.type === 'link'
+    ? `${run.text} (${run.href})`
+    : run.text || '';
+  return unescapeHtml(text).replace(/[\u0000-\u001f\u007f]/g, ' ');
+}
+
+module.exports = { generatePdf, getReportData, getPdfRunText };

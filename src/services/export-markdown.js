@@ -1,4 +1,5 @@
 const { getReportData } = require('./export-pdf');
+const { unescapeHtml } = require('./markdown-render');
 
 // Round 2d's owned-file constraint leaves the audit-list query in this service.
 function listAuditEntries(db, workspaceId, limit, offset) {
@@ -9,17 +10,8 @@ function listAuditEntries(db, workspaceId, limit, offset) {
     .all(workspaceId, limit, offset);
 }
 
-function decodeHtml(value) {
-  return String(value)
-    .replaceAll('&amp;', '&')
-    .replaceAll('&lt;', '<')
-    .replaceAll('&gt;', '>')
-    .replaceAll('&quot;', '"')
-    .replaceAll('&#39;', "'");
-}
-
 function escapeMarkdownText(value) {
-  const text = decodeHtml(value);
+  const text = unescapeHtml(value);
   return text
     .replaceAll('\\', '\\\\')
     .replaceAll('[', '\\[')
@@ -36,9 +28,9 @@ function markdownInline(runs) {
       if (run.type === 'break') return '  \n';
       if (run.type === 'bold') return `**${escapeMarkdownText(run.text)}**`;
       if (run.type === 'italic') return `*${escapeMarkdownText(run.text)}*`;
-      if (run.type === 'code') return `\`${decodeHtml(run.text)}\``;
+      if (run.type === 'code') return `\`${unescapeHtml(run.text)}\``;
       if (run.type === 'link') {
-        return `[${escapeMarkdownText(run.text)}](${decodeHtml(run.href)})`;
+        return `[${escapeMarkdownText(run.text)}](${unescapeHtml(run.href)})`;
       }
       return escapeMarkdownText(run.text || '');
     })
@@ -72,7 +64,9 @@ function generateMarkdown(db, incidentId) {
             return `${'#'.repeat(block.level)} ${markdownInline(block.inlines)}`;
           }
           if (block.type === 'paragraph') return markdownInline(block.inlines);
-          if (block.type === 'code') return `\`\`\`\n${block.text}\n\`\`\``;
+          if (block.type === 'code') {
+            return `\`\`\`\n${unescapeHtml(block.text)}\n\`\`\``;
+          }
           const marker = block.ordered ? '1.' : '-';
           return block.items.map((item) => `${marker} ${markdownInline(item)}`).join('\n');
         })
