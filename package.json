@@ -1,0 +1,30 @@
+{
+  "name": "ir-logger",
+  "version": "1.0.0",
+  "private": true,
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test tests/**/*.test.js"
+  },
+  "engines": {
+    "node": ">=22.12"
+  },
+  "dependencies": {
+    "bcrypt": "latest",
+    "better-sqlite3": "^11.10.0",
+    "dotenv": "latest",
+    "express": "^5",
+    "express-session": "latest",
+    "helmet": "latest",
+    "multer": "latest",
+    "nanoid": "latest",
+    "passport": "latest",
+    "passport-google-oauth20": "latest",
+    "passport-local": "latest",
+    "pdf-lib": "latest"
+  },
+  "devDependencies": {
+    "supertest": "latest"
+  }
+}
