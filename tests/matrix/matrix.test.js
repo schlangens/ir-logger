@@ -83,3 +83,63 @@ test('fails closed when incident workspace resolution throws', async (t) => {
   assert.notEqual(response.status, 200);
   assert.equal(Object.hasOwn(response.body, 'tactics'), false);
 });
+
+test('matrix 404 is byte-identical across tenants and nonexistent', async (t) => {
+  const context = makeContext();
+  t.after(() => closeContext(context));
+  const owner = await registerWorkspace(context.app, 'Owner');
+  const outsider = await registerWorkspace(context.app, 'Outsider');
+  incident(context.db, { id: 'private-incident', workspaceId: owner.workspaceId, userId: owner.userId });
+  const cross = await outsider.agent.get('/api/incidents/private-incident/matrix');
+  const missing = await outsider.agent.get('/api/incidents/unknown-incident/matrix');
+  assert.equal(cross.status, missing.status);
+  assert.equal(JSON.stringify(cross.body), JSON.stringify(missing.body));
+  assert.equal(cross.body.error, 'Incident not found');
+});
+
+test('matrix is rate-limited to 60 per minute per user', async (t) => {
+  const context = makeContext();
+  t.after(() => closeContext(context));
+  const { agent, workspaceId, userId } = await registerWorkspace(context.app);
+  incident(context.db, { id: 'matrix-rate', workspaceId, userId });
+  for (let i = 0; i < 60; i++) {
+    assert.equal(
+      (await agent.get('/api/incidents/matrix-rate/matrix')).status,
+      200,
+      `request ${i + 1}`,
+    );
+  }
+  const blocked = await agent.get('/api/incidents/matrix-rate/matrix');
+  assert.equal(blocked.status, 429);
+  assert.equal(blocked.body.error, 'Too many requests');
+  assert.equal(typeof blocked.headers['retry-after'], 'string');
+});
+
+test('matrix rate limiter fails closed on storage error', async (t) => {
+  const context = makeContext();
+  t.after(() => closeContext(context));
+  const { agent, workspaceId, userId } = await registerWorkspace(context.app);
+  incident(context.db, { id: 'matrix-storage', workspaceId, userId });
+  const originalPrepare = context.db.prepare.bind(context.db);
+  context.db.prepare = (sql) => {
+    if (String(sql).includes('rate_limits')) throw new Error('storage');
+    return originalPrepare(sql);
+  };
+  const response = await agent.get('/api/incidents/matrix-storage/matrix');
+  context.db.prepare = originalPrepare;
+  assert.equal(response.status, 503);
+  assert.equal(response.body.error, 'Rate limiter unavailable');
+});
+
+test('matrix fails loudly when a technique has an unknown tactic', async (t) => {
+  const context = makeContext();
+  t.after(() => closeContext(context));
+  const { agent, workspaceId, userId } = await registerWorkspace(context.app);
+  incident(context.db, { id: 'matrix-bad-tactic', workspaceId, userId });
+  context.db.prepare(
+    `INSERT INTO techniques (id, name, tactic, url) VALUES (?, ?, ?, ?)`,
+  ).run('T9999', 'Bad tactic', 'Unknown-Tactic', 'https://attack.mitre.org/techniques/T9999/');
+  const response = await agent.get('/api/incidents/matrix-bad-tactic/matrix');
+  assert.equal(response.status, 500);
+  assert.equal(Object.hasOwn(response.body, 'tactics'), false);
+});

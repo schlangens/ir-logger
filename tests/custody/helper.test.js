@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { db: makeDb } = require('../foundation/helpers');
 const custody = require('../../src/services/custody');
 
-test('custody append writes the custody and audit rows atomically', (t) => {
+test('custody append writes a custody row and a matching audit row', (t) => {
   const { db } = makeDb();
   t.after(() => db.close());
   // Test-only fixture rows establish the foreign-key parents for the helper.

@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const http = require('node:http');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const request = require('supertest');
@@ -25,7 +26,7 @@ async function register(app, email, name = 'User') {
     .post('/api/auth/register')
     .send({ email, name, password: 'long-password' });
   assert.equal(response.status, 201);
-  return { agent, id: response.body.user.id };
+  return { agent, id: response.body.user.id, cookie: response.headers['set-cookie'][0] };
 }
 
 async function setup({ demo = false, role = 'owner' } = {}) {
@@ -48,7 +49,11 @@ async function setup({ demo = false, role = 'owner' } = {}) {
   db.prepare(
     'INSERT INTO incidents (id,workspace_id,ref,title,severity,created_by) VALUES (?,?,?,?,?,?)',
   ).run(incidentId, workspaceId, 'IR-TEST-' + Math.floor(Math.random() * 100000), 'Incident', 'low', owner.id);
-  return { app, db, owner: owner.agent, ownerId: owner.id, workspaceId, incidentId };
+  return { app, db, owner: owner.agent, ownerId: owner.id, ownerCookie: owner.cookie, workspaceId, incidentId };
+}
+
+function cookieValue(setCookie) {
+  return setCookie.split(';')[0].trim();
 }
 
 function fixtureBytes(text = 'forensic evidence fixture') {
@@ -357,4 +362,143 @@ test('bare evidence custody route returns 404 across tenants', async (t) => {
     401,
   );
   assert.equal((await second.owner.get('/api/evidence/cross-tenant-evidence/custody')).status, 404);
+});
+
+test('bare evidence metadata 404 is byte-identical across tenants and nonexistent', async (t) => {
+  const { first, second } = await crossTenantSetup();
+  t.after(() => close(first.app, first.db));
+  const cross = await second.owner.get('/api/evidence/cross-tenant-evidence');
+  const missing = await second.owner.get('/api/evidence/does-not-exist');
+  assert.equal(cross.status, missing.status);
+  assert.equal(JSON.stringify(cross.body), JSON.stringify(missing.body));
+  assert.equal(cross.body.error, 'Evidence not found');
+});
+
+test('bare evidence download 404 is byte-identical across tenants and nonexistent', async (t) => {
+  const { first, second } = await crossTenantSetup();
+  t.after(() => close(first.app, first.db));
+  const cross = await second.owner.get('/api/evidence/cross-tenant-evidence/download');
+  const missing = await second.owner.get('/api/evidence/does-not-exist/download');
+  assert.equal(cross.status, missing.status);
+  assert.equal(JSON.stringify(cross.body), JSON.stringify(missing.body));
+  assert.equal(cross.body.error, 'Evidence not found');
+});
+
+test('bare evidence custody 404 is byte-identical across tenants and nonexistent', async (t) => {
+  const { first, second } = await crossTenantSetup();
+  t.after(() => close(first.app, first.db));
+  const cross = await second.owner.get('/api/evidence/cross-tenant-evidence/custody');
+  const missing = await second.owner.get('/api/evidence/does-not-exist/custody');
+  assert.equal(cross.status, missing.status);
+  assert.equal(JSON.stringify(cross.body), JSON.stringify(missing.body));
+  assert.equal(cross.body.error, 'Evidence not found');
+});
+
+test('incident evidence list 404 is byte-identical across tenants and nonexistent', async (t) => {
+  const { first, second } = await crossTenantSetup();
+  t.after(() => close(first.app, first.db));
+  const cross = await second.owner.get(`/api/incidents/${first.incidentId}/evidence`);
+  const missing = await second.owner.get('/api/incidents/does-not-exist/evidence');
+  assert.equal(cross.status, missing.status);
+  assert.equal(JSON.stringify(cross.body), JSON.stringify(missing.body));
+  assert.equal(cross.body.error, 'Incident not found');
+});
+
+test('evidence upload is rate-limited to 30 per hour per user', async (t) => {
+  const { app, db, owner, incidentId } = await setup();
+  t.after(() => close(app, db));
+  for (let i = 0; i < 30; i++) {
+    const response = await owner
+      .post(`/api/incidents/${incidentId}/evidence`)
+      .attach('file', fixtureBytes(), `rate-${i}.txt`);
+    assert.equal(response.status, 201, `upload ${i + 1}`);
+  }
+  const blocked = await owner
+    .post(`/api/incidents/${incidentId}/evidence`)
+    .attach('file', fixtureBytes(), 'blocked.txt');
+  assert.equal(blocked.status, 429);
+  assert.equal(blocked.body.error, 'Too many requests');
+  assert.equal(typeof blocked.headers['retry-after'], 'string');
+});
+
+test('evidence upload rate limiter fails closed on storage error', async (t) => {
+  const { app, db, owner, incidentId } = await setup();
+  t.after(() => close(app, db));
+  const originalPrepare = db.prepare.bind(db);
+  db.prepare = (sql) => {
+    if (String(sql).includes('rate_limits')) throw new Error('storage');
+    return originalPrepare(sql);
+  };
+  const response = await owner
+    .post(`/api/incidents/${incidentId}/evidence`)
+    .attach('file', fixtureBytes(), 'storage.txt');
+  db.prepare = originalPrepare;
+  assert.equal(response.status, 503);
+  assert.equal(response.body.error, 'Rate limiter unavailable');
+});
+
+test('rejects a declared content length that exceeds the total cap before invoking multer', async (t) => {
+  const { app, db, owner, ownerId, incidentId } = await setup();
+  t.after(() => close(app, db));
+  const remaining = 1000;
+  insertFixture(db, {
+    id: 'budget-filler',
+    incidentId,
+    userId: ownerId,
+    size: 200 * 1024 * 1024 - remaining,
+  });
+  const before = fs.readdirSync(evidenceDir).sort();
+  const response = await owner
+    .post(`/api/incidents/${incidentId}/evidence`)
+    .attach('file', Buffer.alloc(remaining, 'a'), 'fills-budget.txt');
+  assert.equal(response.status, 409);
+  assert.equal(response.body.error, 'Evidence total size limit exceeded');
+  assert.deepEqual(fs.readdirSync(evidenceDir).sort(), before);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM evidence').get().count, 1);
+});
+
+test('total-size backstop catches uploads with no declared content length', async (t) => {
+  const { app, db, owner, ownerId, incidentId, ownerCookie } = await setup();
+  const server = app.listen(0);
+  t.after(() => {
+    server.close();
+    close(app, db);
+  });
+  insertFixture(db, { id: 'budget-filler', incidentId, userId: ownerId, size: 200 * 1024 * 1024 - 100 });
+  const before = fs.readdirSync(evidenceDir).sort();
+  const { port } = server.address();
+  const boundary = '----BackstopBoundary';
+  const fileContent = Buffer.alloc(200, 'b');
+  const body = Buffer.concat([
+    Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="backstop.txt"\r\n\r\n`,
+    ),
+    fileContent,
+    Buffer.from(`\r\n--${boundary}--\r\n`),
+  ]);
+  const response = await new Promise((resolve, reject) => {
+    const req = http.request(
+      {
+        host: '127.0.0.1',
+        port,
+        path: `/api/incidents/${incidentId}/evidence`,
+        method: 'POST',
+        headers: {
+          'Content-Type': `multipart/form-data; boundary=${boundary}`,
+          Cookie: cookieValue(ownerCookie),
+        },
+      },
+      (res) => {
+        let data = '';
+        res.on('data', (chunk) => (data += chunk));
+        res.on('end', () => resolve({ status: res.statusCode, body: data, headers: res.headers }));
+      },
+    );
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+  assert.equal(response.status, 409);
+  assert.deepEqual(fs.readdirSync(evidenceDir).sort(), before);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM evidence').get().count, 1);
 });

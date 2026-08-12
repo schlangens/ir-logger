@@ -5,6 +5,7 @@ const multer = require('multer');
 const evidence = require('../services/evidence');
 const custody = require('../services/custody');
 const { resolveWorkspaceAccess, resolveActor, requireSession } = require('../middleware/workspace-guard');
+const { rateLimit } = require('../middleware/rate-limit');
 const { evidenceStorage } = require('../uploads/storage');
 const hub = require('../sse/hub');
 
@@ -13,6 +14,17 @@ const NORMAL_FILE_CAP = 25 * MB;
 const DEMO_FILE_CAP = 5 * MB;
 const NORMAL_TOTAL_CAP = 200 * MB;
 const DEMO_TOTAL_CAP = 20 * MB;
+
+function evidenceUploadRateLimitKey(req) {
+  return req.user?.id || req.session?.demoWorkspaceId || req.ip;
+}
+
+const evidenceUploadRateLimit = rateLimit({
+  bucket: 'evidence-upload',
+  max: 30,
+  windowMs: 60 * 60 * 1000,
+  keyFn: evidenceUploadRateLimitKey,
+});
 
 function sanitizeFilename(name, id) {
   const sanitized = String(name || '')
@@ -62,7 +74,10 @@ function guardIncident(db, req, incidentId) {
   const incident = evidence.getIncident(db, incidentId);
   if (!incident) return { response: { status: 404, error: 'Incident not found' } };
   const access = resolveWorkspaceAccess(db, req, incident.workspace_id);
-  if (!access.ok) return { response: access };
+  if (!access.ok) {
+    if (access.status === 404) return { response: { status: 404, error: 'Incident not found' } };
+    return { response: access };
+  }
   const actor = resolveActor(db, req, incident.workspace_id);
   if (!actor) return { response: { status: 401, error: 'Authentication required' } };
   return { incident, access, actor };
@@ -72,7 +87,10 @@ function guardEvidence(db, req, evidenceId) {
   const item = evidence.getWithWorkspace(db, evidenceId);
   if (!item) return { response: { status: 404, error: 'Evidence not found' } };
   const access = resolveWorkspaceAccess(db, req, item.workspace_id);
-  if (!access.ok) return { response: access };
+  if (!access.ok) {
+    if (access.status === 404) return { response: { status: 404, error: 'Evidence not found' } };
+    return { response: access };
+  }
   const actor = resolveActor(db, req, item.workspace_id);
   if (!actor) return { response: { status: 401, error: 'Authentication required' } };
   return { item, access, actor };
@@ -82,7 +100,7 @@ function sendGuardFailure(res, result) {
   return res.status(result.status).json({ error: result.error });
 }
 
-router.post('/incidents/:id/evidence', (req, res, next) => {
+router.post('/incidents/:id/evidence', evidenceUploadRateLimit, (req, res, next) => {
   const db = req.app.locals.db;
   try {
     const guarded = guardIncident(db, req, req.params.id);
@@ -97,6 +115,11 @@ router.post('/incidents/:id/evidence', (req, res, next) => {
       return res.status(409).json({ error: 'Evidence row limit reached' });
     if (usage.bytes >= totalCap)
       return res.status(409).json({ error: 'Evidence total size limit reached' });
+
+    const contentLength = parseInt(req.get('Content-Length'), 10);
+    if (!Number.isNaN(contentLength) && usage.bytes + contentLength > totalCap) {
+      return res.status(409).json({ error: 'Evidence total size limit exceeded' });
+    }
 
     const upload = multer({
       storage: hashingStorage,
