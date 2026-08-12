@@ -72,6 +72,20 @@ function insertFixture(db, { id, incidentId, userId, size = 1, storedPath, filen
   );
 }
 
+test('unauthenticated requests to every evidence route return 401', async (t) => {
+  const { app, db, incidentId } = await setup();
+  t.after(() => close(app, db));
+  const unauthenticated = request(app);
+  assert.equal(
+    (await unauthenticated.post(`/api/incidents/${incidentId}/evidence`)).status,
+    401,
+  );
+  assert.equal((await unauthenticated.get(`/api/incidents/${incidentId}/evidence`)).status, 401);
+  assert.equal((await unauthenticated.get('/api/evidence/missing')).status, 401);
+  assert.equal((await unauthenticated.get('/api/evidence/missing/download')).status, 401);
+  assert.equal((await unauthenticated.get('/api/evidence/missing/custody')).status, 401);
+});
+
 test('uploads evidence with a single-pass hash and broadcasts metadata', async (t) => {
   const fixture = fixtureBytes();
   const { app, db, owner, ownerId, incidentId } = await setup();
@@ -321,17 +335,26 @@ async function crossTenantSetup() {
 test('bare evidence metadata route returns 404 across tenants', async (t) => {
   const { first, second } = await crossTenantSetup();
   t.after(() => close(first.app, first.db));
+  assert.equal((await request(first.app).get('/api/evidence/cross-tenant-evidence')).status, 401);
   assert.equal((await second.owner.get('/api/evidence/cross-tenant-evidence')).status, 404);
 });
 
 test('bare evidence download route returns 404 across tenants', async (t) => {
   const { first, second } = await crossTenantSetup();
   t.after(() => close(first.app, first.db));
+  assert.equal(
+    (await request(first.app).get('/api/evidence/cross-tenant-evidence/download')).status,
+    401,
+  );
   assert.equal((await second.owner.get('/api/evidence/cross-tenant-evidence/download')).status, 404);
 });
 
 test('bare evidence custody route returns 404 across tenants', async (t) => {
   const { first, second } = await crossTenantSetup();
   t.after(() => close(first.app, first.db));
+  assert.equal(
+    (await request(first.app).get('/api/evidence/cross-tenant-evidence/custody')).status,
+    401,
+  );
   assert.equal((await second.owner.get('/api/evidence/cross-tenant-evidence/custody')).status, 404);
 });

@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const multer = require('multer');
 const evidence = require('../services/evidence');
 const custody = require('../services/custody');
-const { resolveWorkspaceAccess } = require('../middleware/workspace-guard');
+const { resolveWorkspaceAccess, requireSession } = require('../middleware/workspace-guard');
 const { evidenceStorage } = require('../uploads/storage');
 const hub = require('../sse/hub');
 
@@ -55,6 +55,8 @@ const hashingStorage = {
     return evidenceStorage._removeFile(req, file, callback);
   },
 };
+
+router.use(['/incidents/:id/evidence', '/evidence/:id'], requireSession);
 
 function guardIncident(db, req, incidentId) {
   const incident = evidence.getIncident(db, incidentId);
