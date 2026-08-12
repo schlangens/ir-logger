@@ -185,7 +185,7 @@ async function generatePdf(db, incidentId) {
         drawRuns(block.inlines);
       } else if (block.type === 'code') {
         for (const line of block.text.split('\n')) {
-          drawWrapped(`    ${line}`, regular, size, 12);
+          drawWrapped(getPdfCodeLineText(line), regular, size, 12);
         }
       } else {
         block.items.forEach((item, index) => {
@@ -235,4 +235,13 @@ function getPdfRunText(run) {
   return unescapeHtml(text).replace(/[\u0000-\u001f\u007f]/g, ' ');
 }
 
-module.exports = { generatePdf, getReportData, getPdfRunText };
+function getPdfCodeLineText(line) {
+  return `    ${unescapeHtml(line)}`;
+}
+
+module.exports = {
+  generatePdf,
+  getReportData,
+  getPdfRunText,
+  getPdfCodeLineText,
+};

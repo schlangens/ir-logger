@@ -5,7 +5,10 @@ const { db: makeDb } = require('../foundation/helpers');
 const { createApp } = require('../../src/server');
 const payloads = require('../fixtures/markdown-xss-payloads');
 const { renderMarkdown } = require('../../src/services/markdown-render');
-const { getPdfRunText } = require('../../src/services/export-pdf');
+const {
+  getPdfCodeLineText,
+  getPdfRunText,
+} = require('../../src/services/export-pdf');
 
 async function register(app, email, name) {
   const agent = request.agent(app);
@@ -214,6 +217,7 @@ test('legitimate Markdown remains intact and structured', async (t) => {
     'x < 5 and y = 3',
     '[text](https://example.com/a?b=1&c=2)',
     '**bold** `code`',
+    '> not a quote',
     '',
     '```',
     'fenced < &',
@@ -235,6 +239,7 @@ test('legitimate Markdown remains intact and structured', async (t) => {
   assert.equal(markdown.status, 200);
   assert.match(markdown.text, /x < 5 and y = 3/);
   assert.match(markdown.text, /\[text\]\(https:\/\/example\.com\/a\?b=1&c=2\)/);
+  assert.match(markdown.text, /\\> not a quote/);
   assert.match(markdown.text, /fenced < &/);
   assert.doesNotMatch(markdown.text, /&#61;|&#58;|&lt;/);
 });
@@ -244,6 +249,14 @@ test('PDF drawing text decodes renderer entities', () => {
   const runs = renderMarkdown(body)[0].inlines;
   const drawn = runs.map(getPdfRunText).join('');
   assert.equal(drawn, body);
+  assert.doesNotMatch(drawn, /&#39;|&amp;|&lt;/);
+});
+
+test('PDF code drawing text decodes renderer entities', () => {
+  const body = "curl -s 'https://evil.test/x?a=1&b=2' <tag> # don't run this";
+  const block = renderMarkdown(`\`\`\`\n${body}\n\`\`\``)[0];
+  const drawn = getPdfCodeLineText(block.text);
+  assert.equal(drawn, `    ${body}`);
   assert.doesNotMatch(drawn, /&#39;|&amp;|&lt;/);
 });
 
