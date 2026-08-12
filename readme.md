@@ -127,6 +127,27 @@ Upon launching, the GUI displays:
 - Use **Save** for event-specific folders to avoid shared file conflicts.
     
 
+### 6. Optional: Syncing to the web app
+
+Sync is entirely optional and off by default — with no sync settings saved, the tool behaves exactly as described above and never contacts a server.
+
+1. Click **Sync Settings** (next to "Save" / "Save As") and enter:
+    
+    - **Server base URL**: the Incident Logger v2 instance you want entries to land in (e.g. `https://ir.example.com`).
+        
+    - **API token**: create one on the web app's **workspace settings** page, in its API tokens section, and paste it here.
+        
+2. Click **Save** in the dialog. The values are written to `ir-logger-sync.json` next to `ir-logger.py` (git-ignored) so they persist between runs. The token is only ever stored in that local file.
+    
+3. From then on, each **Save** / **Save As** writes the local Markdown entry first, exactly as before, and then attempts to send the same entry to the server. The `EventID` is used as the incident reference, and the incident is created on the server if it doesn't exist yet.
+    
+4. A status label under the buttons shows the result: `Synced ✓ <HH:MM:SS>` on success, or `Sync failed (saved locally)` if the server is unreachable, the token is rejected, or the request times out (5 seconds).
+    
+
+The server URL must use `https`; `http` is allowed only for `localhost`, `127.0.0.1`, or `[::1]` development servers. The token file is created with `0600` permissions (on Windows, POSIX mode bits do not apply the same way and `chmod` only toggles the read-only bit, so restrict it with NTFS ACLs/file properties). Redirects are rejected as sync failures. A blank `EventID` skips sync, and timestamps are sent as UTC. Python's `urllib` honors `http_proxy`/`https_proxy` from the environment, so incident text and the bearer token traverse whatever proxy the responder's host has configured.
+
+Sync is best-effort and always secondary to the local file: a sync failure never blocks a save, never pops up an error dialog, and never loses an entry — the local Markdown file remains the authoritative record. Attachments added with **Add File** and **Paste Image** stay local-only and are not synced.
+
 ---
 
 ## File Structure

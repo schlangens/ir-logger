@@ -1,16 +1,105 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import datetime
+import json
 import os
 import shutil
 import re
 import getpass  # To retrieve the username
+import urllib.request
+import urllib.parse
+import threading
 
 try:
     from PIL import ImageGrab, Image
     pillow_installed = True
 except ImportError:
     pillow_installed = False
+
+# Optional sync configuration, stored next to this script (git-ignored).
+# Absent or invalid means sync is simply off; v1 works fully offline.
+SYNC_CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ir-logger-sync.json")
+SYNC_TIMEOUT_SECONDS = 5
+
+
+class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+SYNC_OPENER = urllib.request.build_opener(NoRedirectHandler)
+
+
+def is_valid_server_url(server_url):
+    """Allow HTTPS, plus HTTP for local development hosts only."""
+    try:
+        parsed = urllib.parse.urlsplit(server_url)
+    except ValueError:
+        return False
+    if not parsed.netloc or not parsed.hostname or parsed.username or parsed.password:
+        return False
+    if parsed.scheme == "https":
+        return True
+    return parsed.scheme == "http" and parsed.hostname in {"localhost", "127.0.0.1", "::1"}
+
+
+def write_sync_config(server_url, token):
+    """Persist sync settings with permissions suitable for the bearer token."""
+    server_url = server_url.strip().rstrip("/")
+    token = token.strip()
+    if not is_valid_server_url(server_url):
+        raise ValueError("Server URL must use HTTPS (HTTP is allowed only for localhost).")
+    if not token:
+        raise ValueError("API token cannot be empty.")
+    config = json.dumps({"server_url": server_url, "token": token}, indent=2).encode("utf-8")
+    fd = os.open(SYNC_CONFIG_PATH, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        os.chmod(SYNC_CONFIG_PATH, 0o600)
+        with os.fdopen(fd, "wb") as f:
+            fd = None
+            f.write(config)
+    finally:
+        if fd is not None:
+            os.close(fd)
+
+
+def normalize_utc(value):
+    """Return an aware ISO 8601 timestamp normalized to UTC with a Z suffix."""
+    if isinstance(value, str):
+        if value.endswith("Z"):
+            value = value[:-1] + "+00:00"
+        value = datetime.datetime.fromisoformat(value)
+    if value.tzinfo is None:
+        value = value.astimezone()
+    return value.astimezone(datetime.timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def build_ingest_payload(event_id, is_timeline, category, body, occurred_at):
+    payload = {
+        "incident_ref": event_id,
+        "kind": "timeline" if is_timeline else "technical",
+        "body": body,
+        "occurred_at": normalize_utc(occurred_at),
+        "author_name": getpass.getuser(),
+    }
+    if not is_timeline:
+        payload["category"] = category
+    return payload
+
+
+def post_ingest(server_url, token, payload):
+    request = urllib.request.Request(
+        f"{server_url.rstrip('/')}/api/v1/ingest",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {token}",
+        },
+        method="POST",
+    )
+    with SYNC_OPENER.open(request, timeout=SYNC_TIMEOUT_SECONDS) as response:
+        if not 200 <= response.status < 300:
+            raise RuntimeError(f"unexpected HTTP status: {response.status}")
 
 # Categories for Technical Details
 TECH_CATEGORIES = [
@@ -65,8 +154,89 @@ class IRLoggerApp:
         # Submit Buttons
         tk.Button(root, text="Save", command=self.save_entry).grid(row=7, column=0, pady=10)
         tk.Button(root, text="Save As", command=self.save_entry_as).grid(row=7, column=1, pady=10)
+        tk.Button(root, text="Sync Settings", command=self.open_sync_settings).grid(row=7, column=2, pady=10)
+
+        self.sync_status = tk.Label(root, text="", anchor="w")
+        self.sync_status.grid(row=8, column=0, columnspan=3, padx=5, sticky="w")
+
+        self.sync_config = self.load_sync_config()
 
         self.update_past_events()
+
+    def load_sync_config(self):
+        """Loads sync settings if present and usable; anything else means sync is off."""
+        try:
+            with open(SYNC_CONFIG_PATH, "r") as f:
+                config = json.load(f)
+            server_url = str(config["server_url"]).strip().rstrip("/")
+            token = str(config["token"]).strip()
+            if server_url and token and is_valid_server_url(server_url):
+                return {"server_url": server_url, "token": token}
+        except Exception:
+            pass
+        return None
+
+    def open_sync_settings(self):
+        """Dialog for the optional server base URL and API token."""
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Sync Settings")
+        dialog.transient(self.root)
+
+        tk.Label(dialog, text="Server base URL:").grid(row=0, column=0, padx=5, pady=5, sticky="e")
+        url_entry = tk.Entry(dialog, width=34)
+        url_entry.grid(row=0, column=1, padx=5, pady=5)
+        tk.Label(dialog, text="API token:").grid(row=1, column=0, padx=5, pady=5, sticky="e")
+        token_entry = tk.Entry(dialog, width=34, show="*")
+        token_entry.grid(row=1, column=1, padx=5, pady=5)
+
+        if self.sync_config:
+            url_entry.insert(0, self.sync_config["server_url"])
+            token_entry.insert(0, self.sync_config["token"])
+
+        tk.Label(
+            dialog,
+            text="Optional. Sync is best-effort; entries are always saved locally first.",
+            wraplength=320,
+            justify="left",
+        ).grid(row=2, column=0, columnspan=2, padx=5, pady=5, sticky="w")
+        error_label = tk.Label(dialog, text="", fg="red")
+        error_label.grid(row=3, column=0, columnspan=2, padx=5, sticky="w")
+
+        def save_settings():
+            server_url = url_entry.get().strip().rstrip("/")
+            token = token_entry.get().strip()
+            try:
+                write_sync_config(server_url, token)
+            except ValueError as e:
+                error_label.config(text=str(e))
+                return
+            except OSError as e:
+                error_label.config(text=f"Could not save sync settings: {e.strerror}")
+                return
+            self.sync_config = self.load_sync_config()
+            dialog.destroy()
+
+        tk.Button(dialog, text="Save", command=save_settings).grid(row=4, column=0, pady=10)
+        tk.Button(dialog, text="Cancel", command=dialog.destroy).grid(row=4, column=1, pady=10)
+
+    def sync_entry(self, event_id, is_timeline, category, body, occurred_at):
+        """Best-effort POST of an already-saved entry to the web app; never raises."""
+        if not self.sync_config:
+            return
+        if not event_id:
+            self.root.after(0, lambda: self.sync_status.config(text="Sync skipped (no EventID)"))
+            return
+
+        def post_in_background():
+            try:
+                payload = build_ingest_payload(event_id, is_timeline, category, body, occurred_at)
+                post_ingest(self.sync_config["server_url"], self.sync_config["token"], payload)
+                status = f"Synced \u2713 {datetime.datetime.now().strftime('%H:%M:%S')}"
+            except Exception:
+                status = "Sync failed (saved locally)"
+            self.root.after(0, lambda: self.sync_status.config(text=status))
+
+        threading.Thread(target=post_in_background, daemon=True).start()
 
     def toggle_category(self):
         if self.log_type.get() == "Timestamp Event":
@@ -129,7 +299,8 @@ class IRLoggerApp:
             messagebox.showerror("Error", "Details cannot be empty!")
             return
 
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+        now = datetime.datetime.now().astimezone()
+        timestamp = now.strftime("%Y-%m-%d %H:%M")
         entry = f"- [{timestamp}] {username}: {data}\n"
 
         with open(filename, "a") as f:  # Open in append mode
@@ -138,6 +309,15 @@ class IRLoggerApp:
         self.data.delete("1.0", tk.END)
         self.refresh_preview()
         self.update_past_events()
+
+        # Strictly after the local write, and never allowed to affect it.
+        self.sync_entry(
+            event_id=self.event_id.get().strip(),
+            is_timeline=is_timeline,
+            category=category,
+            body=data,
+            occurred_at=now,
+        )
 
     def save_entry(self):
         """Saves the log entry under the current EventID."""
