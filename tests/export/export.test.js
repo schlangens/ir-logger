@@ -149,6 +149,8 @@ test('exports require membership, including analyst and viewer members', async (
   assert.equal((await other.get('/api/incidents/incident-id-0001/export.pdf')).status, 404);
   assert.equal((await request(app).get('/api/incidents/incident-id-0001/export.pdf')).status, 401);
   assert.equal((await request(app).get('/api/incidents/incident-id-0001/export.md')).status, 401);
+  // Anonymous callers never learn whether an incident id exists: 401 either way.
+  assert.equal((await request(app).get('/api/incidents/does-not-exist/export.pdf')).status, 401);
   assert.equal((await owner.get('/api/incidents/does-not-exist/export.pdf')).status, 404);
   assert.equal((await owner.get('/api/incidents/does-not-exist/export.md')).status, 404);
 });

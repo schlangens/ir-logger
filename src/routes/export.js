@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const { requireWorkspace } = require('../middleware/workspace-guard');
+const { requireWorkspace, requireSession } = require('../middleware/workspace-guard');
 const audit = require('../services/audit');
 const { generatePdf } = require('../services/export-pdf');
 const { generateMarkdown } = require('../services/export-markdown');
@@ -54,6 +54,7 @@ function useIncidentWorkspace(req, res, next) {
 
 router.get(
   '/incidents/:id/export.pdf',
+  requireSession,
   incidentWorkspace(),
   useIncidentWorkspace,
   requireWorkspace({ param: 'workspaceId' }),
@@ -61,6 +62,7 @@ router.get(
 );
 router.get(
   '/incidents/:id/export.md',
+  requireSession,
   incidentWorkspace(),
   useIncidentWorkspace,
   requireWorkspace({ param: 'workspaceId' }),
