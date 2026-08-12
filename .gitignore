@@ -5,3 +5,5 @@ node_modules/
 !.env.example
 data/
 ir-logger-sync.json
+__pycache__/
+*.pyc

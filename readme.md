@@ -183,4 +183,4 @@ Sync is best-effort and always secondary to the local file: a sync failure never
 
 ## License
 
-This project is licensed under MIT - see the LICENSE file for details (if applicable).
+This project is licensed under the MIT License - see [LICENSE](LICENSE).

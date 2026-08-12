@@ -254,9 +254,12 @@ class DesktopSyncTests(unittest.TestCase):
         )
         harness.sync_entry = lambda **kwargs: ir_logger.IRLoggerApp.sync_entry(harness, **kwargs)
         filename = os.path.join(self.tempdir.name, "entry.md")
+        original_getuser = ir_logger.getpass.getuser
+        ir_logger.getpass.getuser = lambda: "ubuntu"
         try:
             ir_logger.IRLoggerApp.log_entry(harness, filename)
         finally:
+            ir_logger.getpass.getuser = original_getuser
             deadline = time.monotonic() + 2
             while not server.server.requests and time.monotonic() < deadline:
                 time.sleep(0.01)
