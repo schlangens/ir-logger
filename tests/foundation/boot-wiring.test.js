@@ -102,10 +102,12 @@ test('Round 2 API routers are mounted and answer this app\'s own JSON contract',
       modulePath: '../../src/routes/demo',
       method: 'post',
       path: '/api/demo',
-      // SPEC.md §5.3 POST /api/demo — Auth: none: succeeds (201), or the
-      // route's own fail-closed rate-limit outcomes (429 over the per-IP
-      // cap, 503 if the limiter's storage can't be evaluated, per §8.3).
-      statuses: [404, 201, 429, 503],
+      // SPEC.md §5.3 POST /api/demo — Auth: none, but a same-origin check
+      // denies cross-site requests (403). With a same-origin request it
+      // succeeds (201), or the route's own fail-closed rate-limit outcomes
+      // (429 over the per-IP cap, 503 if the limiter's storage can't be
+      // evaluated, per §8.3).
+      statuses: [404, 201, 403, 429, 503],
     },
   ];
 

@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const multer = require('multer');
 const evidence = require('../services/evidence');
 const custody = require('../services/custody');
-const { resolveWorkspaceAccess, requireSession } = require('../middleware/workspace-guard');
+const { resolveWorkspaceAccess, resolveActor, requireSession } = require('../middleware/workspace-guard');
 const { evidenceStorage } = require('../uploads/storage');
 const hub = require('../sse/hub');
 
@@ -63,7 +63,9 @@ function guardIncident(db, req, incidentId) {
   if (!incident) return { response: { status: 404, error: 'Incident not found' } };
   const access = resolveWorkspaceAccess(db, req, incident.workspace_id);
   if (!access.ok) return { response: access };
-  return { incident, access };
+  const actor = resolveActor(db, req, incident.workspace_id);
+  if (!actor) return { response: { status: 401, error: 'Authentication required' } };
+  return { incident, access, actor };
 }
 
 function guardEvidence(db, req, evidenceId) {
@@ -71,7 +73,9 @@ function guardEvidence(db, req, evidenceId) {
   if (!item) return { response: { status: 404, error: 'Evidence not found' } };
   const access = resolveWorkspaceAccess(db, req, item.workspace_id);
   if (!access.ok) return { response: access };
-  return { item, access };
+  const actor = resolveActor(db, req, item.workspace_id);
+  if (!actor) return { response: { status: 401, error: 'Authentication required' } };
+  return { item, access, actor };
 }
 
 function sendGuardFailure(res, result) {
@@ -85,8 +89,6 @@ router.post('/incidents/:id/evidence', (req, res, next) => {
     if (guarded.response) return sendGuardFailure(res, guarded.response);
     if (!['owner', 'analyst'].includes(guarded.access.role))
       return res.status(403).json({ error: 'Forbidden' });
-    if (!req.user) return res.status(401).json({ error: 'Authentication required' });
-
     const usage = evidence.usage(db, guarded.incident.workspace_id);
     const isDemo = guarded.access.isDemo;
     const rowCap = isDemo ? 5 : Infinity;
@@ -143,12 +145,12 @@ router.post('/incidents/:id/evidence', (req, res, next) => {
             size: req.file.size,
             sha256: req.file.sha256,
             storedPath: req.file.path,
-            uploadedBy: req.user.id,
+            uploadedBy: guarded.actor.id,
           });
           custody.append(db, {
             evidenceId: itemId,
             workspaceId: guarded.incident.workspace_id,
-            actorUserId: req.user.id,
+            actorUserId: guarded.actor.id,
             action: 'uploaded',
           });
         })();
@@ -185,12 +187,11 @@ router.get('/evidence/:id', (req, res, next) => {
   try {
     const guarded = guardEvidence(db, req, req.params.id);
     if (guarded.response) return sendGuardFailure(res, guarded.response);
-    if (!req.user) return res.status(401).json({ error: 'Authentication required' });
     db.transaction(() => {
       custody.append(db, {
         evidenceId: guarded.item.id,
         workspaceId: guarded.item.workspace_id,
-        actorUserId: req.user.id,
+        actorUserId: guarded.actor.id,
         action: 'viewed',
       });
     })();
@@ -205,14 +206,13 @@ router.get('/evidence/:id/download', (req, res, next) => {
   try {
     const guarded = guardEvidence(db, req, req.params.id);
     if (guarded.response) return sendGuardFailure(res, guarded.response);
-    if (!req.user) return res.status(401).json({ error: 'Authentication required' });
     if (!fs.existsSync(guarded.item.stored_path))
       return res.status(404).json({ error: 'Evidence file not found' });
     db.transaction(() => {
       custody.append(db, {
         evidenceId: guarded.item.id,
         workspaceId: guarded.item.workspace_id,
-        actorUserId: req.user.id,
+        actorUserId: guarded.actor.id,
         action: 'downloaded',
       });
     })();

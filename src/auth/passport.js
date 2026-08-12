@@ -72,10 +72,13 @@ function resolveGoogleUser(db, profile) {
     logGoogleDeny(db, profile, 'unverified_email', email, emails);
     return false;
   }
-  let user = db.prepare('SELECT id,email,name FROM users WHERE google_id=?').get(profile.id);
-  if (user) return user;
-  user = db.prepare('SELECT id,email,name FROM users WHERE email=?').get(email);
+  let user = db
+    .prepare('SELECT id,email,name,is_demo FROM users WHERE google_id=?')
+    .get(profile.id);
+  if (user) return user.is_demo === 1 ? false : user;
+  user = db.prepare('SELECT id,email,name,is_demo FROM users WHERE email=?').get(email);
   if (user) {
+    if (user.is_demo === 1) return false;
     db.prepare('UPDATE users SET google_id=? WHERE id=?').run(profile.id, user.id);
     return user;
   }
