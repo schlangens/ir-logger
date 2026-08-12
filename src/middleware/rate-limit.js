@@ -1,3 +1,5 @@
+let lastPurgeAt = 0;
+
 function windowStart(windowMs) {
   return Math.floor(Date.now() / windowMs) * windowMs;
 }
@@ -9,6 +11,14 @@ function consume(db, { bucketKey, max, windowMs }) {
       `INSERT INTO rate_limits (bucket_key, window_start, count) VALUES (?, ?, 1) ON CONFLICT(bucket_key, window_start) DO UPDATE SET count = count + 1 RETURNING count`,
     )
     .get(bucketKey, ws);
+  if (Date.now() - lastPurgeAt >= 60 * 1000) {
+    lastPurgeAt = Date.now();
+    try {
+      db.prepare('DELETE FROM rate_limits WHERE window_start < ?').run(ws);
+    } catch (_) {
+      // Purging stale buckets is best-effort and must not weaken the limiter's fail-closed check.
+    }
+  }
   return {
     allowed: row.count <= max,
     count: row.count,

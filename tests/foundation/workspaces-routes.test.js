@@ -36,6 +36,13 @@ test('workspace create/list/get enforce membership and response shape', async (t
   assert.equal(memberView.status, 200);
   assert.equal(memberView.body.workspace.id, workspaceId);
   assert.ok(Array.isArray(memberView.body.members));
+  const ownerId = db.prepare('SELECT id FROM users WHERE email=?').get('owner@example.test').id;
+  assert.deepEqual(memberView.body.members[0], {
+    userId: ownerId,
+    name: 'Owner',
+    email: 'owner@example.test',
+    role: 'owner',
+  });
   assert.equal(memberView.body.workspace.members, undefined);
   const denied = await other.get(`/api/workspaces/${workspaceId}`);
   assert.equal(denied.status, 404);
@@ -113,4 +120,21 @@ test('non-owners cannot invite or manage tokens, and token lifecycle hides secre
     200,
   );
   assert.equal((await owner.get(`/api/workspaces/${id}/tokens`)).body.tokens.length, 0);
+});
+
+test('token deletion rolls back when its audit append fails', async (t) => {
+  const { db } = makeDb();
+  const app = createApp(db, { startSweeper: false });
+  t.after(() => close(app, db));
+  const owner = await register(app, 'rollback-owner@example.test', 'Owner');
+  const id = (await owner.post('/api/workspaces').send({ name: 'Rollback' })).body.workspace.id;
+  const created = await owner.post(`/api/workspaces/${id}/tokens`).send({ name: 'Keep me' });
+  const originalPrepare = db.prepare.bind(db);
+  db.prepare = (sql) => {
+    if (String(sql).includes('INSERT INTO audit_log')) throw new Error('audit unavailable');
+    return originalPrepare(sql);
+  };
+  const response = await owner.delete(`/api/workspaces/${id}/tokens/${created.body.tokenId}`);
+  assert.equal(response.status, 500);
+  assert.ok(db.prepare('SELECT id FROM api_tokens WHERE id=?').get(created.body.tokenId));
 });

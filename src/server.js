@@ -4,6 +4,7 @@ const session = require('express-session');
 const passport = require('passport');
 const helmet = require('helmet');
 const multer = require('multer');
+const crypto = require('node:crypto');
 const path = require('node:path');
 const { getDb, openDatabase, runMigrations } = require('./db');
 const { createSessionStore } = require('./services/session-store');
@@ -23,7 +24,7 @@ function createApp(db, opts = {}) {
   configurePassport(db);
   const secret =
     process.env.SESSION_SECRET ||
-    (process.env.NODE_ENV === 'production' ? null : 'development-only-session-secret');
+    (process.env.NODE_ENV === 'production' ? null : crypto.randomBytes(32).toString('hex'));
   if (!secret) throw new Error('SESSION_SECRET is required in production');
   app.use(
     helmet({

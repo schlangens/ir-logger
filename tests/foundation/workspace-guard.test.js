@@ -93,4 +93,30 @@ test('demo-only sessions cannot create user workspaces', async (t) => {
     .set('Cookie', signedCookie(sid))
     .send({ name: 'Should fail' });
   assert.equal(response.status, 401);
+  assert.equal(
+    (
+      await request(app)
+        .post('/api/workspaces/demo/invite')
+        .set('Cookie', signedCookie(sid))
+        .send({ email: 'nobody@example.test', role: 'viewer' })
+    ).status,
+    401,
+  );
+  assert.equal(
+    (
+      await request(app)
+        .post('/api/workspaces/demo/tokens')
+        .set('Cookie', signedCookie(sid))
+        .send({ name: 'Should fail' })
+    ).status,
+    401,
+  );
+  assert.equal(
+    (
+      await request(app)
+        .delete('/api/workspaces/demo/tokens/token')
+        .set('Cookie', signedCookie(sid))
+    ).status,
+    401,
+  );
 });
