@@ -202,6 +202,20 @@ class DesktopSyncTests(unittest.TestCase):
         finally:
             server.stop()
 
+    def test_internal_sync_error_becomes_failure_status(self):
+        harness = SyncHarness({"server_url": "https://example.test", "token": "secret"})
+        original_getuser = ir_logger.getpass.getuser
+
+        def fail_getuser():
+            raise RuntimeError("poisoned payload construction")
+
+        ir_logger.getpass.getuser = fail_getuser
+        try:
+            harness.sync_entry("IR-poisoned", False, "Discovery", "body", "2024-01-01T12:00:00Z")
+            self.wait_for_status(harness, "Sync failed (saved locally)")
+        finally:
+            ir_logger.getpass.getuser = original_getuser
+
     def test_blank_event_id_skips_sync(self):
         server = TestServer()
         server.start()
@@ -252,6 +266,15 @@ class DesktopSyncTests(unittest.TestCase):
         self.assertEqual(len(server.server.requests), 1)
         payload = json.loads(server.server.requests[0][1])
         self.assertRegex(payload["occurred_at"], r"Z$")
+
+    def test_normalize_utc_accepts_datetime_and_z_string(self):
+        local_time = ir_logger.datetime.datetime(
+            2024, 1, 2, 3, 4, 5,
+            tzinfo=ir_logger.datetime.timezone(ir_logger.datetime.timedelta(hours=-5)),
+        )
+        expected = "2024-01-02T08:04:05Z"
+        self.assertEqual(ir_logger.normalize_utc(local_time), expected)
+        self.assertEqual(ir_logger.normalize_utc("2024-01-02T08:04:05Z"), expected)
 
     def test_no_config_still_writes_locally_without_network(self):
         class Data:

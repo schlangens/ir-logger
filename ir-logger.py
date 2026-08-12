@@ -66,6 +66,8 @@ def write_sync_config(server_url, token):
 def normalize_utc(value):
     """Return an aware ISO 8601 timestamp normalized to UTC with a Z suffix."""
     if isinstance(value, str):
+        if value.endswith("Z"):
+            value = value[:-1] + "+00:00"
         value = datetime.datetime.fromisoformat(value)
     if value.tzinfo is None:
         value = value.astimezone()
@@ -225,10 +227,9 @@ class IRLoggerApp:
             self.root.after(0, lambda: self.sync_status.config(text="Sync skipped (no EventID)"))
             return
 
-        payload = build_ingest_payload(event_id, is_timeline, category, body, occurred_at)
-
         def post_in_background():
             try:
+                payload = build_ingest_payload(event_id, is_timeline, category, body, occurred_at)
                 post_ingest(self.sync_config["server_url"], self.sync_config["token"], payload)
                 status = f"Synced \u2713 {datetime.datetime.now().strftime('%H:%M:%S')}"
             except Exception:
@@ -298,7 +299,7 @@ class IRLoggerApp:
             messagebox.showerror("Error", "Details cannot be empty!")
             return
 
-        now = datetime.datetime.now()
+        now = datetime.datetime.now().astimezone()
         timestamp = now.strftime("%Y-%m-%d %H:%M")
         entry = f"- [{timestamp}] {username}: {data}\n"
 
@@ -315,7 +316,7 @@ class IRLoggerApp:
             is_timeline=is_timeline,
             category=category,
             body=data,
-            occurred_at=normalize_utc(now.astimezone()),
+            occurred_at=now,
         )
 
     def save_entry(self):
