@@ -5,26 +5,26 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "test": "node --test tests/**/*.test.js"
+    "test": "node --test \"tests/**/*.test.js\""
   },
   "engines": {
     "node": ">=22.12"
   },
   "dependencies": {
-    "bcrypt": "latest",
+    "bcrypt": "^6.0.0",
     "better-sqlite3": "^11.10.0",
-    "dotenv": "latest",
+    "dotenv": "^17.4.2",
     "express": "^5",
-    "express-session": "latest",
-    "helmet": "latest",
-    "multer": "latest",
-    "nanoid": "latest",
-    "passport": "latest",
-    "passport-google-oauth20": "latest",
-    "passport-local": "latest",
-    "pdf-lib": "latest"
+    "express-session": "^1.19.0",
+    "helmet": "^8.3.0",
+    "multer": "^2.2.0",
+    "nanoid": "^6.0.1",
+    "passport": "^0.7.0",
+    "passport-google-oauth20": "^2.0.0",
+    "passport-local": "^1.0.0",
+    "pdf-lib": "^1.17.1"
   },
   "devDependencies": {
-    "supertest": "latest"
+    "supertest": "^7.2.2"
   }
 }
