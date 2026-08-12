@@ -4,7 +4,7 @@ router.get('/health', (req, res) => {
     req.app.locals.db.prepare('SELECT 1').get();
     res.json({
       status: 'ok',
-      uptimeSeconds: Math.floor(process.uptime()),
+      uptime_seconds: Math.floor(process.uptime()),
       db: 'ok',
     });
   } catch (e) {

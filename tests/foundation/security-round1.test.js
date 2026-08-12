@@ -456,7 +456,7 @@ test('accepting an invite preserves an existing membership role', async (t) => {
   const invite = await owner.post(`/api/workspaces/${id}/invite`).send({
     email: 'invite-viewer@example.test', role: 'analyst',
   });
-  const token = invite.body.inviteUrl.split('/').pop();
+  const token = invite.body.invite_url.split('/').pop();
   const response = await viewer.post(`/api/invites/${token}/accept`);
   assert.equal(response.status, 200);
   assert.equal(response.body.workspace.role, 'viewer');

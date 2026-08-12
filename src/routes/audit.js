@@ -25,7 +25,10 @@ router.get(
       const limit = parseLimit(req.query.limit, 100, 500);
       if (limit && limit.invalid) return res.status(400).json({ error: 'Invalid limit' });
       const offset = parseOffset(req.query.offset, 0, Number.MAX_SAFE_INTEGER);
-      const entries = listAuditEntries(req.app.locals.db, req.workspace.id, limit, offset);
+      const entries = listAuditEntries(req.app.locals.db, req.workspace.id, limit, offset).map((entry) => ({
+        ...entry,
+        payload_json: JSON.parse(entry.payload_json),
+      }));
       return res.json({ entries });
     } catch (error) {
       return next(error);
@@ -38,7 +41,9 @@ router.get(
   requireWorkspace({ roles: ['owner'] }),
   (req, res, next) => {
     try {
-      return res.json(audit.verify(req.app.locals.db, req.workspace.id));
+      const { brokenAtId, ...result } = audit.verify(req.app.locals.db, req.workspace.id);
+      if (brokenAtId !== undefined) result.broken_at_id = brokenAtId;
+      return res.json(result);
     } catch (error) {
       return next(error);
     }

@@ -64,6 +64,7 @@ test('audit list is owner-only, paginated newest-first, and verifies the chain',
     listed.body.entries.map((entry) => entry.id),
     auditIds.slice(-2).reverse(),
   );
+  assert.ok(listed.body.entries.every((entry) => typeof entry.payload_json === 'object'));
   const offset = await owner.get(`/api/workspaces/${workspace}/audit?limit=1&offset=2`);
   assert.equal(offset.body.entries[0].id, auditIds[auditIds.length - 3]);
   const clamped = await owner.get(`/api/workspaces/${workspace}/audit?limit=1000`);
@@ -80,7 +81,7 @@ test('audit list is owner-only, paginated newest-first, and verifies the chain',
   const broken = await owner.get(`/api/workspaces/${workspace}/audit/verify`);
   assert.equal(broken.status, 200);
   assert.equal(broken.body.valid, false);
-  assert.equal(broken.body.brokenAtId, row.id);
+  assert.equal(broken.body.broken_at_id, row.id);
 });
 
 test('audit list rejects non-numeric limit and clamps limit=0 to 1', async (t) => {

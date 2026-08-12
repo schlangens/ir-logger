@@ -281,7 +281,7 @@ test('demo visitor can upload evidence and view or download it', async (t) => {
     .attach('file', fixture, 'demo-upload.txt');
   assert.equal(upload.status, 201);
   const evidenceId = upload.body.evidence.id;
-  assert.equal(upload.body.evidence.uploadedBy, userId);
+  assert.equal(upload.body.evidence.uploaded_by, userId);
   assert.equal(
     db.prepare('SELECT uploaded_by FROM evidence WHERE id=?').get(evidenceId).uploaded_by,
     userId,

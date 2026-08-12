@@ -52,7 +52,7 @@ router.get('/workspaces/:id', requireWorkspace({}), (req, res, next) => {
       .get(req.workspace.id);
     const members = db
       .prepare(
-        'SELECT u.id AS userId,u.email,u.name,m.role FROM memberships m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=?',
+        'SELECT u.id AS user_id,u.email,u.name,m.role FROM memberships m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=?',
       )
       .all(req.workspace.id);
     res.json({ workspace: { ...w, role: req.workspace.role }, members });
@@ -93,7 +93,7 @@ router.post(
         payload: { email, role },
       });
       res.status(201).json({
-        inviteUrl: `${process.env.BASE_URL || 'https://ir.scottslab.io'}/invite/${raw}`,
+        invite_url: `${process.env.BASE_URL || 'https://ir.scottslab.io'}/invite/${raw}`,
       });
     } catch (e) {
       next(e);
@@ -162,7 +162,7 @@ router.post(
         targetId: id,
         payload: { name: req.body.name },
       });
-      res.status(201).json({ token: raw, tokenId: id });
+      res.status(201).json({ token: raw, token_id: id });
     } catch (e) {
       next(e);
     }
@@ -176,8 +176,8 @@ router.get('/workspaces/:id/tokens', requireUser, requireWorkspace({ roles: ['ow
       .map((r) => ({
         id: r.id,
         name: r.name,
-        createdAt: r.created_at,
-        lastUsedAt: r.last_used_at,
+        created_at: r.created_at,
+        last_used_at: r.last_used_at,
       }));
     res.json({ tokens: rows });
   } catch (e) {

@@ -7,14 +7,14 @@ function createId() {
 function metadata(row) {
   return {
     id: row.id,
-    incidentId: row.incident_id,
-    entryId: row.entry_id,
+    incident_id: row.incident_id,
+    entry_id: row.entry_id,
     filename: row.filename,
     mime: row.mime,
     size: row.size,
     sha256: row.sha256,
-    uploadedBy: row.uploaded_by,
-    uploadedAt: row.uploaded_at,
+    uploaded_by: row.uploaded_by,
+    uploaded_at: row.uploaded_at,
   };
 }
 
