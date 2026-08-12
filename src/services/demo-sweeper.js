@@ -1,7 +1,8 @@
+const fs = require('node:fs');
+const path = require('node:path');
+const { evidenceDir } = require('../uploads/storage');
+
 function sweep(db) {
-  const fs = require('node:fs');
-  const path = require('node:path');
-  const { evidenceDir } = require('../uploads/storage');
   const now = new Date().toISOString();
   let workspaces;
   try {
