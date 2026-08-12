@@ -382,6 +382,36 @@ filename another round already owns).
 
 ---
 
+## Tracked follow-ups
+
+Work flagged during a round's PR review but deliberately deferred rather
+than done piecemeal. Still agent-scoped, in-repo work — unlike the
+before-launch checklist below — just not assigned to any round's
+acceptance criteria yet.
+
+- [ ] **Move inline SQL in `src/routes/auth.js` and
+  `src/routes/workspaces.js` into service modules**, per `AGENTS.md` §3
+  ("Services own all SQL... routers never write raw SQL inline"). Today
+  `auth.js`'s `POST /register` (the email-uniqueness check and the
+  `INSERT INTO users`) and `GET /session` (the workspace-list join), and
+  every route in `workspaces.js` (`POST /workspaces`, `GET /workspaces`,
+  `GET /workspaces/:id`, `POST /workspaces/:id/invite`, `POST
+  /invites/:token/accept`, `POST /workspaces/:id/tokens`, `GET
+  /workspaces/:id/tokens`, `DELETE /workspaces/:id/tokens/:tokenId`) call
+  `db.prepare(...)` directly instead of through a `src/services/users.js`
+  / `src/services/workspaces.js` module, unlike `audit.js` and
+  `session-store.js` which already have their own service modules. This
+  was raised, not fixed, in the Round 1 foundation PR: creating those two
+  new service modules was outside Round 1's owned file set
+  (`docs/devin-briefs/round1-foundation.md` lists exactly which files that
+  session owns), and Round 2a–2e are about to add their own routes and
+  service modules on top of today's file layout — restructuring `auth.js`
+  and `workspaces.js` now risks colliding with work already in flight in
+  those five concurrent sub-rounds. Do this once, across both files, after
+  Round 2 (2a–2e) merges to `main`, rather than piecemeal per-round.
+
+---
+
 ## Before-launch checklist
 
 Everything above is agent-scoped work inside this repo. The items below

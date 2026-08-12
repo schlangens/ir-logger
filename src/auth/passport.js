@@ -33,25 +33,7 @@ function configurePassport(db) {
         },
         (access, refresh, profile, done) => {
           try {
-            const email = profile.emails?.[0]?.value?.toLowerCase();
-            if (!email) return done(null, false);
-            let user = db
-              .prepare('SELECT id,email,name FROM users WHERE google_id=?')
-              .get(profile.id);
-            if (user) return done(null, user);
-            user = db.prepare('SELECT id,email,name FROM users WHERE lower(email)=?').get(email);
-            if (user) {
-              db.prepare('UPDATE users SET google_id=? WHERE id=?').run(profile.id, user.id);
-              return done(null, user);
-            }
-            const id = nanoid(16);
-            db.prepare('INSERT INTO users(id,email,name,google_id) VALUES(?,?,?,?)').run(
-              id,
-              email,
-              profile.displayName || email,
-              profile.id,
-            );
-            done(null, { id, email, name: profile.displayName || email });
+            done(null, resolveGoogleUser(db, profile));
           } catch (e) {
             done(e);
           }
@@ -60,4 +42,38 @@ function configurePassport(db) {
     );
   return passport;
 }
-module.exports = { configurePassport, hashPassword };
+
+// Resolves (or creates) the local user for a Google profile, or returns
+// `false` to deny. Exported separately from the strategy callback above so
+// it can be exercised directly in tests without driving a full OAuth
+// handshake.
+function resolveGoogleUser(db, profile) {
+  const email = profile.emails?.[0]?.value?.toLowerCase();
+  if (!email) return false;
+  // Google's profile reports whether the account holder has actually
+  // verified control of this address (`email_verified` on the raw profile,
+  // surfaced here as `emails[0].verified`). An unverified address is not
+  // proof of control of that mailbox, and this app links/creates accounts
+  // by email — accepting an unverified one would let an identity that
+  // doesn't actually control the mailbox land on (or create) an account for
+  // that email. Fail closed: only an explicit `true` is accepted; anything
+  // absent, malformed, or falsy is denied.
+  if (profile.emails?.[0]?.verified !== true) return false;
+  let user = db.prepare('SELECT id,email,name FROM users WHERE google_id=?').get(profile.id);
+  if (user) return user;
+  user = db.prepare('SELECT id,email,name FROM users WHERE lower(email)=?').get(email);
+  if (user) {
+    db.prepare('UPDATE users SET google_id=? WHERE id=?').run(profile.id, user.id);
+    return user;
+  }
+  const id = nanoid(16);
+  db.prepare('INSERT INTO users(id,email,name,google_id) VALUES(?,?,?,?)').run(
+    id,
+    email,
+    profile.displayName || email,
+    profile.id,
+  );
+  return { id, email, name: profile.displayName || email };
+}
+
+module.exports = { configurePassport, hashPassword, resolveGoogleUser };
