@@ -1,0 +1,64 @@
+# Runs this repo's existing test suites (Node + Python) on every PR into
+# main and on every push to main. Before this workflow existed, nothing
+# ran automatically on PRs — every merge was gated only by whatever an
+# individual session ran locally and by manual review. This is a check,
+# not a build: per AGENTS.md §2 this repo has no build step, and this
+# workflow intentionally adds none.
+name: Tests
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Reads the Node version straight from package.json's "engines"
+      # field (setup-node's package.json support), so CI can't silently
+      # drift from the version this repo actually requires.
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: package.json
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Run Node test suite
+        run: |
+          set -o pipefail
+          npm test | tee node-test-output.txt
+
+          tests_run=$(grep -m1 '^# tests ' node-test-output.txt | awk '{print $3}')
+          tests_pass=$(grep -m1 '^# pass ' node-test-output.txt | awk '{print $3}')
+          tests_skipped=$(grep -m1 '^# skipped ' node-test-output.txt | awk '{print $3}')
+
+          if [ -z "$tests_run" ] || [ "$tests_run" -eq 0 ]; then
+            echo "::error::Node test suite ran 0 tests — treating this as a failure so CI can't pass silently on a broken test glob."
+            exit 1
+          fi
+
+          if [ "$tests_skipped" != "0" ]; then
+            echo "::error::Node test suite skipped $tests_skipped test(s) — failing so a skipped test can't hide a real problem."
+            exit 1
+          fi
+
+          if [ "$tests_pass" != "$tests_run" ]; then
+            echo "::error::Node test suite did not pass all tests ($tests_pass/$tests_run)."
+            exit 1
+          fi
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      # requirements.txt lists tkinter (stdlib, not pip-installable) and
+      # pillow, which the test suite does not import (it shims tkinter
+      # itself when unavailable and never imports pillow) — see
+      # tests/test_desktop_sync.py. Nothing needs to be installed here.
+      - name: Run Python test suite
+        run: python3 -m unittest discover -s tests -p 'test_*.py' -v
