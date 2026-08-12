@@ -99,7 +99,14 @@ test('demo session is refused with a consistent status on every route across a r
 
   // A separate, unrelated demo workspace/session.
   const demoAgent = request.agent(app);
-  const demoResponse = await demoAgent.post('/api/demo');
+  // POST /api/demo enforces a same-origin check (CSRF: it is the only
+  // unauthenticated state-creating endpoint, and it regenerates the session).
+  // A browser always sends Origin on a same-origin POST; supertest does not,
+  // so set it explicitly. Omitting it is correctly a 403.
+  const demoResponse = await demoAgent
+    .post('/api/demo')
+    .set('Host', 'localhost')
+    .set('Origin', 'http://localhost');
   assert.equal(demoResponse.status, 201);
   assert.notEqual(demoResponse.body.workspaceId, workspaceId);
 
@@ -224,7 +231,14 @@ test('workspace guard denies an expired demo grant on its own, before and indepe
   t.after(() => close(app, db));
 
   const demoAgent = request.agent(app);
-  const demoResponse = await demoAgent.post('/api/demo');
+  // POST /api/demo enforces a same-origin check (CSRF: it is the only
+  // unauthenticated state-creating endpoint, and it regenerates the session).
+  // A browser always sends Origin on a same-origin POST; supertest does not,
+  // so set it explicitly. Omitting it is correctly a 403.
+  const demoResponse = await demoAgent
+    .post('/api/demo')
+    .set('Host', 'localhost')
+    .set('Origin', 'http://localhost');
   assert.equal(demoResponse.status, 201);
   const { workspaceId, incidentId } = demoResponse.body;
 
