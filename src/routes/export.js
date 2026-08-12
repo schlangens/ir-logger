@@ -23,9 +23,10 @@ function sendExport(kind) {
   return async (req, res, next) => {
     try {
       const db = req.app.locals.db;
-      const body = kind === 'pdf'
-        ? await generatePdf(db, req.incident.id)
-        : generateMarkdown(db, req.incident.id);
+      const body =
+        kind === 'pdf'
+          ? await generatePdf(db, req.incident.id)
+          : generateMarkdown(db, req.incident.id);
       if (!body) return res.status(404).json({ error: 'Incident not found' });
       audit.append(db, {
         workspaceId: req.workspace.id,
@@ -51,7 +52,19 @@ function useIncidentWorkspace(req, res, next) {
   return next();
 }
 
-router.get('/incidents/:id/export.pdf', incidentWorkspace(), useIncidentWorkspace, requireWorkspace({ param: 'workspaceId' }), sendExport('pdf'));
-router.get('/incidents/:id/export.md', incidentWorkspace(), useIncidentWorkspace, requireWorkspace({ param: 'workspaceId' }), sendExport('md'));
+router.get(
+  '/incidents/:id/export.pdf',
+  incidentWorkspace(),
+  useIncidentWorkspace,
+  requireWorkspace({ param: 'workspaceId' }),
+  sendExport('pdf'),
+);
+router.get(
+  '/incidents/:id/export.md',
+  incidentWorkspace(),
+  useIncidentWorkspace,
+  requireWorkspace({ param: 'workspaceId' }),
+  sendExport('md'),
+);
 
 module.exports = router;
