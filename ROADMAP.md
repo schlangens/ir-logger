@@ -13,6 +13,27 @@ Round 1 (sequential)
   Round 3b desktop sync (independent — may run anytime, any round)
 ```
 
+## Merge order: Round 1 before Round 3b
+
+Round 3b (desktop sync) may be *built* at any time, independent of the other
+rounds (see above) — but it must not *merge* before Round 1. Round 1's
+`.gitignore` additions include `ir-logger-sync.json`, the file the desktop
+tool writes its API token into. Round 3b's branch was cut from an older
+`main`, before that entry existed, so its own `.gitignore` does not ignore
+that filename. Merging Round 3b first would leave a token-bearing file
+untracked but *not* ignored on `main` — exactly the setup that lets a
+credential get committed by accident on someone's next `git add .`. Round 1
+must merge first so its `.gitignore` entry is already on `main` by the time
+Round 3b lands.
+
+This is a merge-ordering fact, not a defect in either round: Round 3b's brief
+never owned `.gitignore` (see Round 1's "Owns" list below), so it was correct
+not to edit it. The general rule for any later branch: if it was cut from an
+older `main`, it inherits that older `.gitignore`. Before merging — or before
+writing any code that saves a secret to disk — confirm the ignore rule it
+depends on actually exists on the branch it's merging *into*, not just the
+branch it was written on.
+
 **`src/server.js` has exactly one owner for the life of this project: Round
 1.** No later round — not 2a–2e, not 3a, not any round added after this
 roadmap — ever edits it. Round 1 pre-creates a stub file at every path a
