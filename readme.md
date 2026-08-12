@@ -8,6 +8,11 @@ coverage matrix, hashed evidence with chain of custody, full-text search,
 report export (Markdown/PDF), and a tamper-evident audit log. The full
 technical specification lives in [`SPEC.md`](SPEC.md).
 
+**Security-minded?** Start with
+[`SECURITY-NARRATIVE.md`](SECURITY-NARRATIVE.md) — the story of the threat
+model, the real defects a live attack pass found, and how each one was fixed
+and pinned by a regression test.
+
 The original tool, **`ir-logger.py`**, is a single-file Python/Tkinter desktop
 app for one analyst logging findings to local Markdown files. It still works
 completely standalone, with no server and no account, exactly as it always
