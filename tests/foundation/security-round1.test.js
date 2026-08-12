@@ -227,7 +227,12 @@ test('login succeeds when rate-limit refund storage fails', async (t) => {
   });
   const original = db.prepare.bind(db);
   db.prepare = (sql) => {
-    if (String(sql).includes('UPDATE rate_limits SET count=count-1')) {
+    // Match on the stable prefix only. This assertion previously named the
+    // full statement, which a later underflow fix rewrote to
+    // `count=MAX(count-1, 0)` — the injection then never fired and this test
+    // passed because the refund simply succeeded, not because the failure path
+    // was exercised.
+    if (String(sql).includes('UPDATE rate_limits SET count=MAX(count-1')) {
       throw new Error('refund unavailable');
     }
     return original(sql);
