@@ -1,12 +1,89 @@
 # Incident Response Logger
 
-> **v1 (this desktop tool) is still fully supported and works standalone,
-> exactly as documented below.** A hosted web application, Incident Logger
-> v2, is also being built on top of it — a shared, multi-analyst version
-> with live timelines, MITRE ATT&CK tagging, hashed evidence, and report
-> export. See [`SPEC.md`](SPEC.md) for the full v2 specification. v1 will
-> gain an optional, opt-in mode to sync its entries into v2, but never
-> requires the server to work.
+[![Tests](https://github.com/schlangens/ir-logger/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/schlangens/ir-logger/actions/workflows/tests.yml)
+
+**Incident Logger v2** is a hosted, multi-analyst incident-response logging
+web app: a live shared timeline, MITRE ATT&CK technique tagging with a
+coverage matrix, hashed evidence with chain of custody, full-text search,
+report export (Markdown/PDF), and a tamper-evident audit log. The full
+technical specification lives in [`SPEC.md`](SPEC.md).
+
+The original tool, **`ir-logger.py`**, is a single-file Python/Tkinter desktop
+app for one analyst logging findings to local Markdown files. It still works
+completely standalone, with no server and no account, exactly as it always
+has — see [Desktop tool (v1)](#desktop-tool-v1) below. It can optionally be
+pointed at a v2 server so its entries also land in a shared timeline; sync is
+off by default and never required.
+
+**Status:** the backend (accounts, workspaces, incidents, entries, technique
+tagging, evidence, search, export, audit log, and an instant demo-workspace
+API) is built and covered by the test suite below. There is no web frontend
+yet — the browser UI (`public/`) is the one remaining piece before this is a
+complete product — and **nothing is deployed**; there is no live site to
+visit. See [`ROADMAP.md`](ROADMAP.md) for what's shipped and what's left.
+
+---
+
+## Running the tests
+
+Node test suite (164 tests, using Node's built-in test runner — no extra
+install beyond `npm install`):
+
+```
+npm test
+```
+
+Python test suite (9 tests, using Python's built-in `unittest`, **not**
+pytest — nothing needs to be installed for it):
+
+```
+python3 -m unittest discover -s tests -p 'test_*.py' -v
+```
+
+Both suites run automatically on every pull request and push to `main` (see
+the badge above and [`.github/workflows/tests.yml`](.github/workflows/tests.yml)).
+
+Note: `requirements.txt` lists `tkinter`, which is part of Python's standard
+library and is **not** installed via `pip` — don't run
+`pip install -r requirements.txt` expecting it to fetch tkinter. Only
+`pillow` (used for optional clipboard-image support in the desktop tool) is
+actually pip-installable.
+
+## Running it locally
+
+The web app is Node/Express with a SQLite database (`better-sqlite3`).
+
+```
+npm install
+npm start
+```
+
+That's it for a quick local run — no environment variables are required in
+development. On startup the app creates its SQLite database file and runs
+its migrations automatically (default path `./data/ir-logger.db`, created if
+missing), and generates a temporary session secret if none is set. It
+listens on port `3059` by default, so `GET http://localhost:3059/health`
+should return `{"status":"ok",...}` once it's running.
+
+To customize it, copy `.env.example` to `.env` and fill in what you need:
+
+| Variable | Default | Notes |
+|---|---|---|
+| `PORT` | `3059` | |
+| `SESSION_SECRET` | random (dev only) | **required** if `NODE_ENV=production` |
+| `DB_PATH` | `./data/ir-logger.db` | directory is created automatically |
+| `EVIDENCE_DIR` | `./data/evidence` | uploaded evidence file storage |
+| `BASE_URL` | `https://ir.scottslab.io` | used to build Google OAuth callback and invite URLs — not a live site |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | unset | only needed to enable "Sign in with Google"; email+password accounts work without them |
+| `NODE_ENV` | unset | set to `production` to require `SESSION_SECRET` and secure cookies |
+
+Since there is no frontend yet, the running app only exposes its JSON API
+(routes under `/api/...`, plus `GET /health`) — there is nothing to click
+around in a browser yet.
+
+---
+
+# Desktop tool (v1)
 
 The "Incident Response Logger" is a graphical user interface (GUI) tool built with Python and `tkinter` to assist incident response (IR) analysts in logging and organizing findings during an incident investigation. It supports logging technical details, timeline events, file attachments, and image captures, with options for both event-specific folder outputs (`Incident_<EventID>/`) or standalone Markdown files.
 

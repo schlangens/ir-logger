@@ -1,5 +1,15 @@
 # ROADMAP.md — build order
 
+**Status:** Round 1 (foundation), all five Round 2 sub-briefs (2a–2e), and
+Round 3b (desktop sync) are merged to `main`, backed by a green test suite
+(164 Node tests + 9 Python tests) that now runs in CI on every PR and push
+to `main` (`.github/workflows/tests.yml`). What remains: Round 3a (the
+web frontend — `public/`, still unbuilt, so there is no browser UI yet)
+and the real-world "Before-launch checklist" items at the bottom of this
+document (nginx/DNS/firewall steps, and the desktop-to-web integration
+smoke test against a real deployed server). Nothing described in this repo
+is deployed yet — there is no live site.
+
 Three rounds. Round 1 is sequential (everything else depends on it). Round
 2 is five sub-briefs that touch disjoint files and can run concurrently
 once Round 1 is merged. Round 3 is frontend + desktop sync + polish, run
