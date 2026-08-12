@@ -954,19 +954,30 @@ proxy layer sitting in front of nginx). Given exactly one real hop:
 - The nginx site for this app must **overwrite** the
   `X-Forwarded-For` header with the real peer address
   (`proxy_set_header X-Forwarded-For $remote_addr;`), **not** append to
-  it. This is a deliberate deviation from a config that appends (`...
-  $proxy_add_x_forwarded_for;`, which some other sites on this box use):
-  with an appending config, a client hitting the origin directly can
-  prepend an arbitrary forged IP to the header before nginx appends the
-  real one, and with `trust proxy` set to 1, Express reads the
-  *left-most* entry — the attacker-controlled one — as `req.ip`. An
-  overwriting config makes that forgery impossible: nginx discards
-  whatever the client sent and always sets the header to the real
-  connecting peer, so there is exactly one value in the header and it's
-  always trustworthy for exactly one hop of trust. This is restated as an
-  operator checklist item in `ROADMAP.md` since it's an nginx-config fact
-  outside any agent's file set, not something a Devin session can verify
-  from inside this repo.
+  it (`... $proxy_add_x_forwarded_for;`, which most other sites on this
+  box use).
+
+  To be precise about why, because this is widely stated wrongly: an
+  appending config is **not** exploitable at `trust proxy: 1`. Express's
+  `proxy-addr` builds the candidate list as
+  `[socketAddr, ...xffEntriesLeftToRight]`, trusts only index `0`, and
+  returns index `1` — the **right-most** header entry, which is exactly
+  the one nginx appended. A client-prepended forgery is structurally
+  discarded. This was verified by tracing the installed `proxy-addr`
+  source and reproducing it against forged single entries, multi-entry
+  chains and malformed headers; every case yielded the real peer.
+
+  The overwriting config is therefore **hardening, not a vulnerability
+  fix**. Its value is that it removes the attacker-supplied prefix
+  entirely, so the header cannot become spoofable if `trust proxy` is
+  ever raised above the real hop count or set to `true` — both of which
+  *are* attacker-controlled under an appending config, and both of which
+  are realistic future mistakes. `trust proxy` is the security-relevant
+  setting here; the nginx directive is the safety net under it.
+
+  This is restated as an operator checklist item in `ROADMAP.md` since
+  it's an nginx-config fact outside any agent's file set, not something a
+  Devin session can verify from inside this repo.
 
 ---
 

@@ -80,11 +80,16 @@ loaded from a CDN (the CSP in §3 below forbids external hosts anyway).
   app's real network path is `browser → nginx → Node` with nothing else
   in front of nginx (`SPEC.md` §8.8 has the full reasoning, including why
   this site is deliberately DNS-only rather than Cloudflare-proxied).
-  `trust proxy: 1` is only correct because the paired nginx site
-  **overwrites** `X-Forwarded-For` with the real peer address rather than
-  appending to it — an appending config would let a direct client forge
-  the header's left-most (trusted) entry and defeat every per-IP rate
-  limiter in `SPEC.md`. The nginx config itself is outside any agent's
+  **Treat `trust proxy` as a security-relevant setting: never change it
+  without changing the real hop count to match.** At `1` with one hop,
+  Express reads the right-most `X-Forwarded-For` entry — the one nginx
+  itself sets — so a client-supplied forgery cannot reach `req.ip`, and
+  every per-IP limiter in `SPEC.md` holds. Raising it above the real hop
+  count, or setting it to `true`, makes `req.ip` attacker-controlled and
+  silently defeats all of them. The paired nginx site additionally
+  **overwrites** rather than appends `X-Forwarded-For`, which is defence
+  in depth against exactly that mistake — not a fix for a live hole
+  (`SPEC.md` §8.8 has the traced reasoning). The nginx config is outside any agent's
   file set (`AGENTS.md` §5 — never touch nginx config); verifying it
   actually overwrites rather than appends is a `ROADMAP.md` "before
   launch" operator checklist item, not something a session can confirm
