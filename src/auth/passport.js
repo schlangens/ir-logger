@@ -17,7 +17,10 @@ function configurePassport(db) {
         bcrypt
           .compare(password, passwordHash)
           .then((ok) =>
-            done(null, ok && row?.password_hash ? { id: row.id, email: row.email, name: row.name } : false),
+            done(
+              null,
+              ok && row?.password_hash ? { id: row.id, email: row.email, name: row.name } : false,
+            ),
           )
           .catch(done);
       } catch (e) {
