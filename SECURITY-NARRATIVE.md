@@ -254,12 +254,14 @@ hop count to match.
   [PR #11](https://github.com/schlangens/ir-logger/pull/11)) added rate limits
   to three endpoints that the live attack pass found unprotected — the
   technique list, the ATT&CK coverage matrix, and evidence uploads — and
-  normalized a subtle inconsistency: a couple of routes were returning the
-  workspace guard's raw `403`/error body for a cross-tenant resource instead
-  of the flat, identical-to-not-found `404` the rest of the system uses,
-  which is exactly the kind of small inconsistency that can tell an attacker
-  "this ID exists, you're just not allowed to see it" instead of "this ID
-  doesn't exist."
+  normalized a subtle inconsistency. Those routes already returned `404` for
+  a cross-tenant resource — the status was never wrong — but the *body* text
+  differed from the one returned for a resource that genuinely does not
+  exist (`"Workspace not found"` versus `"Incident not found"`). Same status
+  code, different wording, which is exactly the kind of small tell that
+  answers "does this ID exist?" for an attacker who is not allowed to know.
+  The fix makes both responses byte-identical, and the pinned test asserts
+  that rather than merely asserting the status.
 - **Cookie/CSRF reasoning** (`AGENTS.md` §3): the session cookie uses
   `sameSite: 'lax'`, not `'strict'`, because `'strict'` would silently break
   Google sign-in — Google's OAuth redirect back to this app is a cross-site,
