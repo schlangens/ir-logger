@@ -1,8 +1,16 @@
 const router = require('express').Router();
-const { requireWorkspace } = require('../middleware/workspace-guard');
+const { requireWorkspace, requireSession } = require('../middleware/workspace-guard');
+const { rateLimit } = require('../middleware/rate-limit');
 const audit = require('../services/audit');
 const { generatePdf } = require('../services/export-pdf');
 const { generateMarkdown } = require('../services/export-markdown');
+
+const exportRateLimit = rateLimit({
+  bucket: 'export',
+  max: 20,
+  windowMs: 60 * 60 * 1000,
+  keyFn: (req) => req.user?.id || req.ip,
+});
 
 function incidentWorkspace(param = 'id') {
   return (req, res, next) => {
@@ -10,7 +18,7 @@ function incidentWorkspace(param = 'id') {
       const incident = req.app.locals.db
         .prepare('SELECT id, ref, workspace_id FROM incidents WHERE id=?')
         .get(req.params[param]);
-      if (!incident) return res.status(404).json({ error: 'Incident not found' });
+      if (!incident) return res.status(404).json({ error: 'Workspace not found' });
       req.incident = incident;
       next();
     } catch (error) {
@@ -27,7 +35,7 @@ function sendExport(kind) {
         kind === 'pdf'
           ? await generatePdf(db, req.incident.id)
           : generateMarkdown(db, req.incident.id);
-      if (!body) return res.status(404).json({ error: 'Incident not found' });
+      if (!body) return res.status(404).json({ error: 'Workspace not found' });
       audit.append(db, {
         workspaceId: req.workspace.id,
         actorUserId: req.user?.id || null,
@@ -54,16 +62,20 @@ function useIncidentWorkspace(req, res, next) {
 
 router.get(
   '/incidents/:id/export.pdf',
+  requireSession,
   incidentWorkspace(),
   useIncidentWorkspace,
   requireWorkspace({ param: 'workspaceId' }),
+  exportRateLimit,
   sendExport('pdf'),
 );
 router.get(
   '/incidents/:id/export.md',
+  requireSession,
   incidentWorkspace(),
   useIncidentWorkspace,
   requireWorkspace({ param: 'workspaceId' }),
+  exportRateLimit,
   sendExport('md'),
 );
 

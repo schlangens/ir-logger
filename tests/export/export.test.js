@@ -9,6 +9,7 @@ const {
   getPdfCodeLineText,
   getPdfRunText,
 } = require('../../src/services/export-pdf');
+const { TACTIC_ORDER } = require('../../src/services/matrix');
 
 async function register(app, email, name) {
   const agent = request.agent(app);
@@ -258,6 +259,97 @@ test('PDF code drawing text decodes renderer entities', () => {
   const drawn = getPdfCodeLineText(block.text);
   assert.equal(drawn, `    ${body}`);
   assert.doesNotMatch(drawn, /&#39;|&amp;|&lt;/);
+});
+
+test('Anonymous callers never learn whether an incident id exists: 401 either way', async (t) => {
+  const { db: database } = makeDb();
+  const app = createApp(database, { startSweeper: false });
+  t.after(() => close(app, database));
+  const owner = await register(app, 'anon-owner@example.test', 'Owner');
+  const workspace = (
+    await owner.post('/api/workspaces').send({ name: 'Anon' })
+  ).body.workspace.id;
+  const ownerId = userId(database, 'anon-owner@example.test');
+  seedIncident(database, ownerId, workspace);
+  const real = await request(app).get('/api/incidents/incident-id-0001/export.pdf');
+  const fake = await request(app).get('/api/incidents/does-not-exist/export.pdf');
+  assert.equal(real.status, 401);
+  assert.equal(fake.status, 401);
+  assert.deepEqual(real.body, fake.body);
+});
+
+test('cross-tenant export 404 is byte-identical to not-found export 404', async (t) => {
+  const { db: database } = makeDb();
+  const app = createApp(database, { startSweeper: false });
+  t.after(() => close(app, database));
+  const owner = await register(app, 'cross-owner@example.test', 'Owner');
+  const other = await register(app, 'cross-other@example.test', 'Other');
+  const workspace = (
+    await owner.post('/api/workspaces').send({ name: 'Cross' })
+  ).body.workspace.id;
+  const ownerId = userId(database, 'cross-owner@example.test');
+  seedIncident(database, ownerId, workspace);
+  for (const suffix of ['export.pdf', 'export.md']) {
+    const cross = await other.get(`/api/incidents/incident-id-0001/${suffix}`);
+    const missing = await other.get(`/api/incidents/does-not-exist/${suffix}`);
+    assert.equal(cross.status, 404);
+    assert.equal(missing.status, 404);
+    assert.deepEqual(cross.body, missing.body);
+  }
+});
+
+test('export endpoints are rate-limited per user', async (t) => {
+  const { db: database } = makeDb();
+  const app = createApp(database, { startSweeper: false });
+  t.after(() => close(app, database));
+  const owner = await register(app, 'rate-owner@example.test', 'Owner');
+  const workspace = (
+    await owner.post('/api/workspaces').send({ name: 'Rate' })
+  ).body.workspace.id;
+  const ownerId = userId(database, 'rate-owner@example.test');
+  seedIncident(database, ownerId, workspace);
+  for (let i = 0; i < 20; i++) {
+    assert.equal((await owner.get('/api/incidents/incident-id-0001/export.md')).status, 200);
+  }
+  const limited = await owner.get('/api/incidents/incident-id-0001/export.md');
+  assert.equal(limited.status, 429);
+  assert.ok(limited.headers['retry-after']);
+});
+
+test('export matrix uses the fixed tactic order from SPEC §2.2.1', async (t) => {
+  const { db: database } = makeDb();
+  const app = createApp(database, { startSweeper: false });
+  t.after(() => close(app, database));
+  const owner = await register(app, 'matrix-owner@example.test', 'Owner');
+  const workspace = (
+    await owner.post('/api/workspaces').send({ name: 'Matrix' })
+  ).body.workspace.id;
+  const ownerId = userId(database, 'matrix-owner@example.test');
+  seedIncident(database, ownerId, workspace);
+  const markdown = await owner.get('/api/incidents/incident-id-0001/export.md');
+  assert.equal(markdown.status, 200);
+  const positions = TACTIC_ORDER.map((tactic) => markdown.text.indexOf(`| ${tactic} |`));
+  assert.ok(positions.every((position) => position > 0));
+  for (let i = 1; i < positions.length; i++) {
+    assert.ok(positions[i] > positions[i - 1], `${TACTIC_ORDER[i]} out of order`);
+  }
+});
+
+test('Markdown escapes a leading > after a line break even with leading spaces', async (t) => {
+  const { db: database } = makeDb();
+  const app = createApp(database, { startSweeper: false });
+  t.after(() => close(app, database));
+  const owner = await register(app, 'quote-owner@example.test', 'Owner');
+  const workspace = (
+    await owner.post('/api/workspaces').send({ name: 'Quote' })
+  ).body.workspace.id;
+  const ownerId = userId(database, 'quote-owner@example.test');
+  const body = 'first line\n > not a quote';
+  seedIncident(database, ownerId, workspace, body);
+  const markdown = await owner.get('/api/incidents/incident-id-0001/export.md');
+  assert.equal(markdown.status, 200);
+  assert.match(markdown.text, /\\> not a quote/);
+  assert.doesNotMatch(markdown.text, /\n > not a quote/);
 });
 
 test('workspace guard failures deny exports before writing audit rows', async (t) => {

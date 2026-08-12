@@ -83,6 +83,37 @@ test('audit list is owner-only, paginated newest-first, and verifies the chain',
   assert.equal(broken.body.brokenAtId, row.id);
 });
 
+test('audit list rejects non-numeric limit and clamps limit=0 to 1', async (t) => {
+  const { db: database } = makeDb();
+  const app = createApp(database, { startSweeper: false });
+  t.after(() => close(app, database));
+  const owner = await register(app, 'audit-limit-owner@example.test', 'Owner');
+  const workspace = (
+    await owner.post('/api/workspaces').send({ name: 'Audit limit' })
+  ).body.workspace.id;
+  for (let i = 0; i < 3; i++) {
+    audit.append(database, {
+      workspaceId: workspace,
+      actorUserId: userId(database, 'audit-limit-owner@example.test'),
+      action: `limit-${i}`,
+      targetType: 'test',
+      targetId: `target-${i}`,
+      payload: {},
+    });
+  }
+  const garbage = await owner.get(`/api/workspaces/${workspace}/audit?limit=abc`);
+  assert.equal(garbage.status, 400);
+  const zero = await owner.get(`/api/workspaces/${workspace}/audit?limit=0`);
+  assert.equal(zero.status, 200);
+  assert.equal(zero.body.entries.length, 1);
+  const negative = await owner.get(`/api/workspaces/${workspace}/audit?limit=-1`);
+  assert.equal(negative.status, 200);
+  assert.equal(negative.body.entries.length, 1);
+  const large = await owner.get(`/api/workspaces/${workspace}/audit?limit=1000`);
+  assert.equal(large.status, 200);
+  assert.ok(large.body.entries.length <= 500);
+});
+
 test('workspace guard failures deny both audit routes without leaking data', async (t) => {
   const { db: database } = makeDb();
   const app = createApp(database, { startSweeper: false });

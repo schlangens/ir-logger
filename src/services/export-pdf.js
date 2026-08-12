@@ -1,5 +1,22 @@
 const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
+const { Encodings } = require('@pdf-lib/standard-fonts');
 const { renderMarkdown, unescapeHtml } = require('./markdown-render');
+const { getMatrix } = require('./matrix');
+
+function toPdfText(value) {
+  const chars = [];
+  for (const char of String(value)) {
+    const codePoint = char.codePointAt(0);
+    if (codePoint <= 0x1f || codePoint === 0x7f) {
+      chars.push(' ');
+    } else if (Encodings.WinAnsi.canEncodeUnicodeCodePoint(codePoint)) {
+      chars.push(char);
+    } else {
+      chars.push('?');
+    }
+  }
+  return chars.join('');
+}
 
 function getReportData(db, incidentId) {
   const incident = db
@@ -28,17 +45,13 @@ function getReportData(db, incidentId) {
       technique_ids: entry.technique_ids ? entry.technique_ids.split(',') : [],
       tokens: renderMarkdown(entry.body_md),
     }));
-  const matrix = db
-    .prepare(
-      `SELECT t.tactic, t.id, t.name,
-        COUNT(DISTINCT CASE WHEN e.incident_id=? THEN et.entry_id END) AS count
-       FROM techniques t
-       LEFT JOIN entry_techniques et ON et.technique_id=t.id
-       LEFT JOIN entries e ON e.id=et.entry_id
-       GROUP BY t.id
-       ORDER BY t.tactic, t.id`,
-    )
-    .all(incidentId);
+  const matrixData = getMatrix(db, incidentId);
+  const matrix = matrixData.tactics.flatMap((tactic) =>
+    tactic.techniques.map((technique) => ({
+      tactic: tactic.tactic,
+      ...technique,
+    })),
+  );
   const evidence = db
     .prepare(
       `SELECT e.filename, e.size, e.sha256, e.uploaded_at,
@@ -70,7 +83,7 @@ async function generatePdf(db, incidentId) {
   };
   const drawLine = (text, font, textSize, indent = 0) => {
     if (y < margin) newPage();
-    page.drawText(text, {
+    page.drawText(toPdfText(text), {
       x: margin + indent,
       y,
       size: textSize,
@@ -80,9 +93,10 @@ async function generatePdf(db, incidentId) {
     y -= lineHeight;
   };
   const drawWrapped = (text, font = regular, textSize = size, indent = 0) => {
+    const sanitized = toPdfText(String(text));
     const maxWidth = page.getWidth() - margin * 2 - indent;
     let line = '';
-    for (const word of String(text).split(/(\s+)/)) {
+    for (const word of sanitized.split(/(\s+)/)) {
       if (font.widthOfTextAtSize(word, textSize) > maxWidth) {
         if (line) {
           drawLine(line, font, textSize, indent);
@@ -232,7 +246,7 @@ function getPdfRunText(run) {
   const text = run.type === 'link'
     ? `${run.text} (${run.href})`
     : run.text || '';
-  return unescapeHtml(text).replace(/[\u0000-\u001f\u007f]/g, ' ');
+  return toPdfText(unescapeHtml(text));
 }
 
 function getPdfCodeLineText(line) {

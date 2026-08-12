@@ -29,4 +29,24 @@ module.exports = [
     input: '<div onclick="alert(1)">x</div>',
     mustNotContain: ['<div onclick="alert(1)">'],
   },
+  {
+    name: 'arrow',
+    input: 'Suspicious login → lateral movement',
+    mustNotContain: [],
+  },
+  {
+    name: 'cjk',
+    input: 'Attacker hostname: .example',
+    mustNotContain: [],
+  },
+  {
+    name: 'emoji',
+    input: 'Critical alert 🚨 received',
+    mustNotContain: [],
+  },
+  {
+    name: 'smart-quote',
+    input: 'The attacker’s “payload” included a €5 transfer',
+    mustNotContain: [],
+  },
 ];

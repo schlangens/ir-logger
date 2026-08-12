@@ -19,7 +19,7 @@ function escapeMarkdownText(value) {
     .replaceAll('*', '\\*')
     .replaceAll('_', '\\_')
     .replaceAll('`', '\\`')
-    .replace(/^>/, '\\>')
+    .replace(/(^|\n)(\s{0,3})>/g, '$1$2\\>')
     .replace(/<(?=[A-Za-z/])/g, '&lt;');
 }
 
