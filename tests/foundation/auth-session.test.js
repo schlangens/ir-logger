@@ -94,6 +94,16 @@ test('failed login limiter returns 429 on the eleventh attempt', async (t) => {
   const { db } = makeDb();
   const app = createApp(db, { startSweeper: false });
   t.after(() => close(app, db));
+  // Freeze the clock for the loop. The limiter buckets by
+  // Math.floor(Date.now()/windowMs), and each iteration runs a real bcrypt
+  // compare, so a loop that straddles a window boundary resets the counter
+  // and the eleventh request legitimately succeeds -- a spurious failure of
+  // a test that is checking route wiring, not the windowing math (which is
+  // unit-tested under a mocked clock in rate-limit.test.js).
+  const originalNow = Date.now;
+  const frozenNow = originalNow();
+  Date.now = () => frozenNow;
+  t.after(() => { Date.now = originalNow; });
   for (let i = 0; i < 10; i++) {
     const response = await request(app)
       .post('/api/auth/login')
@@ -125,6 +135,11 @@ test('registration limiter returns 429 on the sixth attempt', async (t) => {
   const { db } = makeDb();
   const app = createApp(db, { startSweeper: false });
   t.after(() => close(app, db));
+  // Frozen for the same reason as the login limiter test above.
+  const originalNow = Date.now;
+  const frozenNow = originalNow();
+  Date.now = () => frozenNow;
+  t.after(() => { Date.now = originalNow; });
   for (let i = 0; i < 5; i++) {
     const response = await request(app)
       .post('/api/auth/register')
