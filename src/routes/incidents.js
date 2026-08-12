@@ -1,13 +1,24 @@
 const router = require('express').Router();
-const { requireUser, requireWorkspace, resolveWorkspaceAccess } = require('../middleware/workspace-guard');
+const { requireUser, requireSession, requireWorkspace, resolveWorkspaceAccess } = require('../middleware/workspace-guard');
 const incidents = require('../services/incidents');
 const hub = require('../sse/hub');
+
+const SSE_MAX_PER_SESSION = 5;
+const sseBySession = new Map();
+
+function releaseSessionSlot(sessionId) {
+  const count = sseBySession.get(sessionId) || 0;
+  if (count <= 1) sseBySession.delete(sessionId);
+  else sseBySession.set(sessionId, count - 1);
+}
 
 function resolveIncident(req) {
   const db = req.app.locals.db;
   const incident = incidents.resolveIncident(db, req.params.id);
   if (!incident) return { incident: null, access: { ok: false, status: 404, error: 'Incident not found' } };
-  return { incident, access: resolveWorkspaceAccess(db, req, incident.workspace_id) };
+  const access = resolveWorkspaceAccess(db, req, incident.workspace_id);
+  if (!access.ok && access.status === 404) access.error = 'Incident not found';
+  return { incident, access };
 }
 function fail(res, error) { return res.status(error.status || 500).json({ error: error.message || 'Internal server error' }); }
 
@@ -28,15 +39,23 @@ router.get('/workspaces/:id/incidents', requireWorkspace({}), (req, res, next) =
     return res.status(400).json({ error: 'Invalid filters or pagination' });
   try { res.json(incidents.listIncidents(req.app.locals.db, req.workspace.id, { status, severity, limit, offset })); } catch (e) { next(e); }
 });
-router.get('/incidents/:id/stream', (req, res, next) => {
+router.get('/incidents/:id/stream', requireSession, (req, res, next) => {
   try {
     const { incident, access } = resolveIncident(req);
     if (!incident) return res.status(404).json({ error: 'Incident not found' });
     if (!access.ok) return res.status(access.status).json({ error: access.error });
-    hub.subscribe(incident.id, res);
+    const sessionId = req.sessionID || req.user?.id || req.session?.demoWorkspaceId;
+    const current = sseBySession.get(sessionId) || 0;
+    if (current >= SSE_MAX_PER_SESSION) return res.status(503).json({ error: 'Too many concurrent stream connections' });
+    sseBySession.set(sessionId, current + 1);
+    const cleanup = hub.subscribe(incident.id, res);
+    res.on('close', () => {
+      cleanup();
+      releaseSessionSlot(sessionId);
+    });
   } catch (e) { next(e); }
 });
-router.get('/incidents/:id', (req, res, next) => {
+router.get('/incidents/:id', requireSession, (req, res, next) => {
   try {
     const { incident, access } = resolveIncident(req);
     if (!incident) return res.status(404).json({ error: 'Incident not found' });
@@ -48,7 +67,8 @@ router.get('/incidents/:id', (req, res, next) => {
 router.patch('/incidents/:id', requireUser, (req, res, next) => {
   try {
     const { incident, access } = resolveIncident(req);
-    if (!incident || !access.ok) return res.status(404).json({ error: 'Incident not found' });
+    if (!incident) return res.status(404).json({ error: 'Incident not found' });
+    if (!access.ok) return res.status(access.status).json({ error: access.error });
     if (!['owner', 'analyst'].includes(access.role)) return res.status(403).json({ error: 'Forbidden' });
     const changes = req.body || {};
     for (const key of ['title', 'summary']) {

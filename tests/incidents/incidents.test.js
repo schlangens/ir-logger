@@ -102,7 +102,12 @@ test('incident bare-id routes isolate tenants and demo cap is transactional', as
   const wid = (await owner.post('/api/workspaces').send({ name: 'Tenant A' })).body.workspace.id;
   const otherWid = (await other.post('/api/workspaces').send({ name: 'Tenant B' })).body.workspace.id;
   const incident = await owner.post(`/api/workspaces/${wid}/incidents`).send({ title: 'Private', severity: 'low' });
-  assert.equal((await other.get(`/api/incidents/${incident.body.incident.id}`)).status, 404);
+  const crossTenant = await other.get(`/api/incidents/${incident.body.incident.id}`);
+  assert.equal(crossTenant.status, 404);
+  assert.equal(crossTenant.body.error, 'Incident not found');
+  const missingIncident = await other.get('/api/incidents/does-not-exist');
+  assert.equal(missingIncident.status, 404);
+  assert.deepEqual(missingIncident.body, crossTenant.body);
   assert.equal((await other.patch(`/api/incidents/${incident.body.incident.id}`).send({ title: 'Nope' })).status, 404);
   fixture.db.prepare('UPDATE workspaces SET is_demo=1 WHERE id=?').run(wid);
   for (let i = 0; i < 4; i++) await owner.post(`/api/workspaces/${wid}/incidents`).send({ title: `Demo ${i}`, severity: 'low' });
@@ -189,11 +194,17 @@ test('bare-id reads preserve unauthenticated and guard-storage statuses', async 
   const incident = await owner.post(`/api/workspaces/${workspace.body.workspace.id}/incidents`).send({ title: 'Guarded', severity: 'low' });
   const entry = await owner.post(`/api/incidents/${incident.body.incident.id}/entries`).send({ kind: 'timeline', body_md: 'guarded entry' });
   const anonymousIncident = await request(fixture.app).get(`/api/incidents/${incident.body.incident.id}`);
+  const anonymousIncidentMissing = await request(fixture.app).get('/api/incidents/does-not-exist');
   const anonymousEntry = await request(fixture.app).get(`/api/entries/${entry.body.entry.id}`);
+  const anonymousEntryMissing = await request(fixture.app).get('/api/entries/does-not-exist');
   const anonymousStream = await request(fixture.app).get(`/api/incidents/${incident.body.incident.id}/stream`);
+  const anonymousStreamMissing = await request(fixture.app).get('/api/incidents/does-not-exist/stream');
   assert.equal(anonymousIncident.status, 401);
+  assert.equal(anonymousIncidentMissing.status, 401);
   assert.equal(anonymousEntry.status, 401);
+  assert.equal(anonymousEntryMissing.status, 401);
   assert.equal(anonymousStream.status, 401);
+  assert.equal(anonymousStreamMissing.status, 401);
   assert.notEqual(anonymousStream.headers['content-type'], 'text/event-stream');
   assert.equal(hub.subscriberCount(incident.body.incident.id), 0);
 
@@ -206,4 +217,49 @@ test('bare-id reads preserve unauthenticated and guard-storage statuses', async 
   fixture.db.prepare = originalPrepare;
   assert.equal(failedGuard.status, 403);
   assert.equal(hub.subscriberCount(incident.body.incident.id), 0);
+});
+
+test('incident stream caps concurrent subscriptions per session', async (t) => {
+  const fixture = makeApp();
+  t.after(fixture.close);
+  const ownerRegistration = await request(fixture.app).post('/api/auth/register').send({
+    email: 'stream-cap@example.test', name: 'Owner', password: 'round2a-password',
+  });
+  const ownerCookie = ownerRegistration.headers['set-cookie'][0].split(';')[0];
+  const workspace = await request(fixture.app).post('/api/workspaces').set('Cookie', ownerCookie).send({ name: 'Stream cap' });
+  const incident = await request(fixture.app).post(`/api/workspaces/${workspace.body.workspace.id}/incidents`).set('Cookie', ownerCookie).send({ title: 'Cap', severity: 'low' });
+  const incidentId = incident.body.incident.id;
+  const server = await new Promise((resolve) => {
+    const value = fixture.app.listen(0, () => resolve(value));
+  });
+  t.after(() => server.close());
+  const port = server.address().port;
+
+  const streams = [];
+  for (let i = 0; i < 5; i++) {
+    const req = await new Promise((resolve, reject) => {
+      const req = http.request({ port, path: `/api/incidents/${incidentId}/stream`, headers: { Cookie: ownerCookie }, agent: false }, (res) => {
+        assert.equal(res.statusCode, 200);
+        assert.match(res.headers['content-type'], /^text\/event-stream/);
+        resolve(req);
+      });
+      req.on('error', reject);
+      req.end();
+    });
+    streams.push(req);
+  }
+  const rejected = await new Promise((resolve, reject) => {
+    const req = http.request({ port, path: `/api/incidents/${incidentId}/stream`, headers: { Cookie: ownerCookie }, agent: false }, (res) => {
+      resolve({ res });
+    });
+    req.on('error', reject);
+    req.end();
+  });
+  assert.equal(rejected.res.statusCode, 503);
+  assert.notEqual(rejected.res.headers['content-type'], 'text/event-stream');
+  for (const req of streams) req.destroy();
+  await new Promise((resolve) => {
+    const check = () => hub.subscriberCount(incidentId) === 0 ? resolve() : setTimeout(check, 5);
+    check();
+  });
 });

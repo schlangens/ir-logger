@@ -44,6 +44,46 @@ test('v1 ingest authenticates by hash and auto-creates its incident', async (t) 
   assert.match(entry.body_md, /Originally logged by: workstation \(desktop sync\)_$/);
 });
 
+test('v1 ingest validates incident_ref, body, category, occurred_at, and author_name', async (t) => {
+  const fixture = makeApp();
+  t.after(fixture.close);
+  const user = await register(fixture.app, 'ingest-validation@example.test', 'Validator');
+  const workspace = await user.post('/api/workspaces').send({ name: 'Ingest validation' });
+  const workspaceId = workspace.body.workspace.id;
+  const token = (await user.post(`/api/workspaces/${workspaceId}/tokens`).send({ name: 'Desktop' })).body.token;
+  const base = { incident_ref: 'VALID', kind: 'timeline', body: 'valid body' };
+  const send = (payload) => request(fixture.app).post('/api/v1/ingest').set('Authorization', `Bearer ${token}`).send(payload);
+  assert.equal((await send({ ...base, incident_ref: 'invalid ref' })).status, 400);
+  assert.equal((await send({ ...base, incident_ref: 'x'.repeat(65) })).status, 400);
+  assert.equal((await send({ ...base, incident_ref: '' })).status, 400);
+  assert.equal((await send({ ...base, body: '' })).status, 400);
+  assert.equal((await send({ ...base, body: 'x'.repeat(50001) })).status, 400);
+  assert.equal((await send({ ...base, category: 'x'.repeat(201) })).status, 400);
+  assert.equal((await send({ ...base, occurred_at: 'not-a-date' })).status, 400);
+  assert.equal((await send({ ...base, occurred_at: 'x'.repeat(5000) })).status, 400);
+  const authorResponse = await send({ ...base, author_name: 'foo\nbar' });
+  assert.equal(authorResponse.status, 201);
+  const entry = fixture.db.prepare('SELECT body_md FROM entries WHERE id=?').get(authorResponse.body.entryId);
+  assert.ok(entry);
+  assert.ok(!entry.body_md.includes('foo\nbar'), 'newlines must be stripped from author_name');
+  assert.ok(entry.body_md.includes('Originally logged by: foobar (desktop sync)'));
+});
+
+test('entry creation validates body length and occurred_at', async (t) => {
+  const fixture = makeApp();
+  t.after(fixture.close);
+  const user = await register(fixture.app, 'entry-validation@example.test', 'Validator');
+  const wid = (await user.post('/api/workspaces').send({ name: 'Entry validation' })).body.workspace.id;
+  const incident = await user.post(`/api/workspaces/${wid}/incidents`).send({ title: 'Entry validation', severity: 'low' });
+  const id = incident.body.incident.id;
+  assert.equal((await user.post(`/api/incidents/${id}/entries`).send({ kind: 'timeline', body_md: 'x'.repeat(50001) })).status, 400);
+  assert.equal((await user.post(`/api/incidents/${id}/entries`).send({ kind: 'timeline', body_md: 'bad date', occurred_at: 'not-a-date' })).status, 400);
+  assert.equal((await user.post(`/api/incidents/${id}/entries`).send({ kind: 'timeline', body_md: 'bad date', occurred_at: 'x'.repeat(5000) })).status, 400);
+  const withOffset = await user.post(`/api/incidents/${id}/entries`).send({ kind: 'timeline', body_md: 'offset', occurred_at: '2025-08-12T10:00:00.000+05:00' });
+  assert.equal(withOffset.status, 201);
+  assert.equal(withOffset.body.entry.occurred_at, '2025-08-12T05:00:00.000Z');
+});
+
 test('entry events preserve create then technique-tag order and reject unknown tags atomically', async (t) => {
   const fixture = makeApp();
   t.after(fixture.close);
@@ -64,7 +104,7 @@ test('entry events preserve create then technique-tag order and reject unknown t
   assert.equal(fixture.db.prepare('SELECT COUNT(*) AS count FROM entries WHERE body_md=?').get('bad').count, 0);
 });
 
-test('entry list kind and limit filters, validation, viewer denial, and tenant isolation', async (t) => {
+test('entry list kind and limit filters, validation, viewer denial, tenant isolation, and bare-id 404s', async (t) => {
   const fixture = makeApp();
   t.after(fixture.close);
   const owner = await register(fixture.app, 'entry-filter-owner@example.test', 'Owner');
@@ -84,7 +124,14 @@ test('entry list kind and limit filters, validation, viewer denial, and tenant i
   assert.equal((await owner.post(`/api/incidents/${incident.body.incident.id}/entries`).send({ kind: 'timeline', body_md: 'null time', occurred_at: null })).status, 400);
   assert.equal((await viewer.post(`/api/incidents/${incident.body.incident.id}/entries`).send({ kind: 'timeline', body_md: 'nope' })).status, 403);
   const foreign = await other.post(`/api/incidents/${otherIncident.body.incident.id}/entries`).send({ kind: 'timeline', body_md: 'foreign' });
-  assert.equal((await owner.get(`/api/entries/${foreign.body.entry.id}`)).status, 404);
+  const crossTenant = await owner.get(`/api/entries/${foreign.body.entry.id}`);
+  assert.equal(crossTenant.status, 404);
+  assert.equal(crossTenant.body.error, 'Entry not found');
+  const missingEntry = await owner.get('/api/entries/does-not-exist');
+  assert.equal(missingEntry.status, 404);
+  assert.deepEqual(missingEntry.body, crossTenant.body);
+  assert.equal((await request(fixture.app).get(`/api/entries/${foreign.body.entry.id}`)).status, 401);
+  assert.equal((await request(fixture.app).get('/api/entries/does-not-exist')).status, 401);
   assert.equal(first.body.entry.author_name, 'Owner');
   assert.equal(second.body.entry.author_name, 'Owner');
 });
