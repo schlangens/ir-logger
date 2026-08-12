@@ -239,6 +239,7 @@ test('login succeeds when rate-limit refund storage fails', async (t) => {
   assert.equal(response.status, 200);
 });
 
+// Pins single-attempt refunds against interleaved shared-IP login activity.
 test('successful login refunds only its own attempt for the shared IP budget', async (t) => {
   const { db } = makeDb();
   const app = createApp(db, { startSweeper: false });
@@ -291,6 +292,22 @@ test('successful login refunds only its own attempt for the shared IP budget', a
     ).status,
     429,
   );
+});
+
+// Pins authentication before workspace existence resolution for anonymous callers.
+test('anonymous workspace lookups do not reveal workspace existence', async (t) => {
+  const { db } = makeDb();
+  const app = createApp(db, { startSweeper: false });
+  t.after(() => close(app, db));
+  const owner = await register(app, 'oracle-owner@example.test');
+  const id = (await owner.post('/api/workspaces').send({ name: 'Oracle' })).body.workspace.id;
+  const real = await request(app).get(`/api/workspaces/${id}`);
+  const missing = await request(app).get('/api/workspaces/does-not-exist');
+  assert.equal(real.status, missing.status);
+  assert.deepEqual(real.body, missing.body);
+  for (const header of ['content-type', 'content-length', 'etag', 'x-powered-by']) {
+    assert.equal(real.headers[header], missing.headers[header], header);
+  }
 });
 
 // Pins demo-session access to live, explicitly demo workspaces.

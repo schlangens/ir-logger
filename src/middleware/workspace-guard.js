@@ -1,13 +1,15 @@
 function resolveWorkspaceAccess(db, req, workspaceId) {
   if (!workspaceId) return { ok: false, status: 404, error: 'Workspace not found' };
+  const hasDemoGrant = req.session?.demoWorkspaceId === workspaceId;
+  if (!req.user && !hasDemoGrant)
+    return { ok: false, status: 401, error: 'Authentication required' };
   try {
     const workspace = db
       .prepare('SELECT id, is_demo, expires_at FROM workspaces WHERE id = ?')
       .get(workspaceId);
     if (!workspace) return { ok: false, status: 404, error: 'Workspace not found' };
     if (
-      req.session &&
-      req.session.demoWorkspaceId === workspaceId &&
+      hasDemoGrant &&
       workspace.is_demo === 1 &&
       workspace.expires_at &&
       new Date(workspace.expires_at) > new Date()

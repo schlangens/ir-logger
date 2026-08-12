@@ -54,7 +54,7 @@ function peek(db, { bucketKey, max, windowMs }) {
   };
 }
 
-// `refund-on-success` consumes every attempt and exposes `req.rateLimit.refund()`.
+// `refund-on-success` consumes every attempt and refunds one attempt via `req.rateLimit.refund()`.
 function rateLimit({ bucket, max, windowMs, keyFn = (req) => req.ip, countMode = 'all' }) {
   return (req, res, next) => {
     try {
@@ -86,7 +86,7 @@ function rateLimit({ bucket, max, windowMs, keyFn = (req) => req.ip, countMode =
             try {
               req.app.locals.db
                 .prepare(
-                  'UPDATE rate_limits SET count=count-1 WHERE bucket_key=? AND window_start=? AND count>0',
+                  'UPDATE rate_limits SET count=MAX(count-1, 0) WHERE bucket_key=? AND window_start=?',
                 )
                 .run(args.bucketKey, result.windowStart);
             } catch (_) {
