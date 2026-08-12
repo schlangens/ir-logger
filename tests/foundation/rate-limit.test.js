@@ -58,24 +58,40 @@ test('consume purges stale windows without removing the current bucket', (t) => 
   t.after(() => {
     Date.now = originalNow;
   });
-  const current = Math.floor(Date.now() / 60000) * 60000;
+  const registrationWindow = Math.floor(Date.now() / (60 * 60 * 1000)) * (60 * 60 * 1000);
+  const loginWindow = Math.floor(Date.now() / (15 * 60 * 1000)) * (15 * 60 * 1000);
   db.prepare('INSERT INTO rate_limits (bucket_key, window_start, count) VALUES (?, ?, ?)').run(
-    'stale:ip',
-    current - 60000,
+    'registration:1.2.3.4',
+    registrationWindow,
+    4,
+  );
+  db.prepare('INSERT INTO rate_limits (bucket_key, window_start, count) VALUES (?, ?, ?)').run(
+    'login:1.2.3.4',
+    loginWindow - 15 * 60 * 1000,
     9,
   );
-  const result = consume(db, { bucketKey: 'current:ip', max: 5, windowMs: 60000 });
+  const result = consume(db, {
+    bucketKey: 'login:1.2.3.4',
+    max: 5,
+    windowMs: 15 * 60 * 1000,
+  });
   assert.equal(result.count, 1);
   assert.equal(
     db
       .prepare('SELECT count FROM rate_limits WHERE bucket_key=? AND window_start=?')
-      .get('stale:ip', current - 60000),
+      .get('login:1.2.3.4', loginWindow - 15 * 60 * 1000),
     undefined,
   );
   assert.equal(
     db
       .prepare('SELECT count FROM rate_limits WHERE bucket_key=? AND window_start=?')
-      .get('current:ip', current).count,
+      .get('login:1.2.3.4', loginWindow).count,
     1,
+  );
+  assert.equal(
+    db
+      .prepare('SELECT count FROM rate_limits WHERE bucket_key=? AND window_start=?')
+      .get('registration:1.2.3.4', registrationWindow).count,
+    4,
   );
 });

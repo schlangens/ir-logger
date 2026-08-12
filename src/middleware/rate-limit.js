@@ -14,7 +14,10 @@ function consume(db, { bucketKey, max, windowMs }) {
   if (Date.now() - lastPurgeAt >= 60 * 1000) {
     lastPurgeAt = Date.now();
     try {
-      db.prepare('DELETE FROM rate_limits WHERE window_start < ?').run(ws);
+      db.prepare('DELETE FROM rate_limits WHERE bucket_key = ? AND window_start < ?').run(
+        bucketKey,
+        ws,
+      );
     } catch (_) {
       // Purging stale buckets is best-effort and must not weaken the limiter's fail-closed check.
     }
