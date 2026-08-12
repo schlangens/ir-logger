@@ -23,7 +23,7 @@ process.env.EVIDENCE_DIR = evidenceDir;
 const { db: makeDb } = require('./helpers');
 const { createApp } = require('../../src/server');
 const { resolveWorkspaceAccess } = require('../../src/middleware/workspace-guard');
-const { configurePassport } = require('../../src/auth/passport');
+const { configurePassport, resolveGoogleUser } = require('../../src/auth/passport');
 const seedDemoWorkspace = require('../../src/services/demo-seed');
 const { sweep } = require('../../src/services/demo-sweeper');
 
@@ -142,29 +142,68 @@ test('demo session is refused with a consistent status on every route across a r
 });
 
 // --- Property 2: the synthetic demo user cannot authenticate -------------
-//
-// NOTE ON SCOPE: the local-login half of this property is pinned below and
-// verified false-if-broken. The "Google path also refuses it" half is
-// deliberately NOT pinned as a passing assertion, because direct execution
-// against `main` shows it is not true at the application-code level today.
-// `resolveGoogleUser` in src/auth/passport.js links (and authenticates) any
-// existing user row — including an is_demo=1 row with no google_id — to
-// whatever Google profile presents a `verified: true` email matching that
-// row's email. Reproduced directly: calling
-// `resolveGoogleUser(db, { id: 'attacker', emails: [{ value: demoUser.email,
-// verified: true }] })` against a freshly demo-seeded database returns the
-// demo user (not `false`) and writes a google_id onto that row. In today's
-// deployment this is only safe because Google itself can never assert
-// `verified: true` for an `@demo.invalid` address (that TLD is reserved and
-// unresolvable, so no Google account can exist for it) — that protection
-// lives outside this app's code, not in it. Writing `assert.equal(result,
-// false)` here would be a false assertion against current `main` and would
-// fail immediately; adding it was declined per this task's "no tautologies /
-// do not fake it" rule. An open, unmerged PR (devin/1786553140, "resolve
-// demo actor and harden demo/foundation seams") independently fixes this by
-// adding `if (user.is_demo === 1) return false;` to both branches of
-// `resolveGoogleUser` — confirming this is a real, known, already-targeted
-// gap rather than a misreading on this pin's part.
+
+// `resolveGoogleUser` used to link any existing user row — including an
+// is_demo=1 row — to a Google profile with a matching verified email, so the
+// Google path for this property was deliberately left unasserted while the
+// guard did not exist. In practice the only protection was external: Google
+// cannot assert `verified: true` for an `@demo.invalid` address because that
+// TLD is reserved and unresolvable. Commit 0ae4585 closed the gap by adding
+// `if (user.is_demo === 1) return false;` to both the google_id-match and
+// email-match branches; the tests below now pin that guard.
+
+test('Google sign-in refuses a synthetic demo user on both match branches and still accepts a real user', (t) => {
+  const { db } = makeDb();
+  t.after(() => db.close());
+
+  // Email-match branch: the demo user has no google_id yet.
+  const emailDemo = seedDemoWorkspace(db);
+  const emailDemoUser = db.prepare('SELECT * FROM users WHERE id=?').get(emailDemo.userId);
+  assert.equal(emailDemoUser.is_demo, 1);
+  const emailProfile = {
+    id: 'google-attacker-email',
+    displayName: 'Attacker',
+    emails: [{ value: emailDemoUser.email, verified: true }],
+  };
+  assert.equal(resolveGoogleUser(db, emailProfile), false);
+  assert.equal(
+    db.prepare('SELECT google_id FROM users WHERE id=?').get(emailDemoUser.id).google_id,
+    null,
+  );
+
+  // google_id-match branch: a google_id has already been written onto a demo row.
+  const gidDemo = seedDemoWorkspace(db);
+  const gidDemoUser = db.prepare('SELECT * FROM users WHERE id=?').get(gidDemo.userId);
+  assert.equal(gidDemoUser.is_demo, 1);
+  db.prepare('UPDATE users SET google_id=? WHERE id=?').run('google-attacker-gid', gidDemoUser.id);
+  const gidProfile = {
+    id: 'google-attacker-gid',
+    displayName: 'Attacker',
+    emails: [{ value: gidDemoUser.email, verified: true }],
+  };
+  assert.equal(resolveGoogleUser(db, gidProfile), false);
+
+  // Control: a non-demo user is still linked and accepted.
+  db.prepare('INSERT INTO users (id, email, name, password_hash) VALUES (?, ?, ?, ?)').run(
+    'real-user',
+    'real@example.test',
+    'Real User',
+    'hash',
+  );
+  const realProfile = {
+    id: 'google-real',
+    displayName: 'Real User',
+    emails: [{ value: 'real@example.test', verified: true }],
+  };
+  const result = resolveGoogleUser(db, realProfile);
+  assert.notEqual(result, false);
+  assert.equal(result.id, 'real-user');
+  assert.equal(
+    db.prepare('SELECT google_id FROM users WHERE id=?').get('real-user').google_id,
+    'google-real',
+  );
+});
+
 
 test('the synthetic demo user cannot log in locally with any password, because it has no password hash and no linked Google id — not incidentally', async (t) => {
   const { db } = makeDb();
