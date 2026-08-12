@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const { requireUser, requireSession, resolveWorkspaceAccess } = require('../middleware/workspace-guard');
+const { requireSession, resolveWorkspaceAccess, resolveActor } = require('../middleware/workspace-guard');
 const entries = require('../services/entries');
 const incidentService = require('../services/incidents');
 
@@ -27,12 +27,14 @@ function parseUtc(value) {
   return new Date(ts).toISOString();
 }
 
-router.post('/incidents/:id/entries', requireUser, (req, res, next) => {
+router.post('/incidents/:id/entries', (req, res, next) => {
   try {
     const { row, access } = resolveIncident(req);
     if (!row) return bad(res, 404, 'Incident not found');
     if (!access.ok) return bad(res, access.status, access.error);
     if (!['owner', 'analyst'].includes(access.role)) return bad(res, 403, 'Forbidden');
+    const actor = resolveActor(req.app.locals.db, req, row.workspace_id);
+    if (!actor) return bad(res, 401, 'Authentication required');
     const { kind, body_md: bodyMd, occurred_at: occurredAt = new Date().toISOString(), technique_ids: techniqueIds = [] } = req.body || {};
     const occurredIso = parseUtc(occurredAt);
     if (
@@ -45,7 +47,7 @@ router.post('/incidents/:id/entries', requireUser, (req, res, next) => {
       techniqueIds.some((id) => typeof id !== 'string')
     )
       return bad(res, 400, 'Invalid entry');
-    const entry = entries.createEntry(req.app.locals.db, { incidentId: row.id, userId: req.user.id, kind, occurredAt: occurredIso, bodyMd, techniqueIds });
+    const entry = entries.createEntry(req.app.locals.db, { incidentId: row.id, userId: actor.id, kind, occurredAt: occurredIso, bodyMd, techniqueIds });
     res.status(201).json({ entry });
   } catch (e) { if (e.status) return bad(res, e.status, e.message); next(e); }
 });
