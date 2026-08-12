@@ -40,23 +40,54 @@ function consume(db, { bucketKey, max, windowMs }) {
   };
 }
 
+function peek(db, { bucketKey, max, windowMs }) {
+  const ws = windowStart(windowMs);
+  const row = db
+    .prepare('SELECT count FROM rate_limits WHERE bucket_key=? AND window_start=?')
+    .get(bucketKey, ws);
+  const count = row?.count || 0;
+  return {
+    allowed: count < max,
+    count,
+    windowStart: ws,
+    retryAfterSeconds: Math.max(1, Math.ceil((ws + windowMs - Date.now()) / 1000)),
+  };
+}
+
 // `refund-on-success` consumes every attempt and exposes `req.rateLimit.refund()`.
 function rateLimit({ bucket, max, windowMs, keyFn = (req) => req.ip, countMode = 'all' }) {
   return (req, res, next) => {
     try {
       const key = `${bucket}:${keyFn(req)}`;
       const args = { bucketKey: key, max, windowMs };
-      const result = consume(req.app.locals.db, args);
+      const result =
+        countMode === 'failures' ? peek(req.app.locals.db, args) : consume(req.app.locals.db, args);
       if (!result.allowed) {
         res.set('Retry-After', String(result.retryAfterSeconds));
         return res.status(429).json({ error: 'Too many requests' });
       }
+      if (countMode === 'failures') {
+        req.rateLimit = {
+          recordFailure: () => {
+            try {
+              consume(req.app.locals.db, args);
+            } catch (_) {
+              // A failed failure-record costs no additional request and must not break the response.
+            }
+          },
+        };
+      }
       if (countMode === 'refund-on-success') {
+        let refunded = false;
         req.rateLimit = {
           refund: () => {
+            if (refunded) return;
+            refunded = true;
             try {
               req.app.locals.db
-                .prepare('DELETE FROM rate_limits WHERE bucket_key=? AND window_start=?')
+                .prepare(
+                  'UPDATE rate_limits SET count=count-1 WHERE bucket_key=? AND window_start=? AND count>0',
+                )
                 .run(args.bucketKey, result.windowStart);
             } catch (_) {
               // A failed refund costs one budget attempt but must never fail login.
@@ -72,4 +103,4 @@ function rateLimit({ bucket, max, windowMs, keyFn = (req) => req.ip, countMode =
   };
 }
 
-module.exports = { rateLimit, consume, MAX_WINDOW_MS };
+module.exports = { rateLimit, consume, peek, MAX_WINDOW_MS };

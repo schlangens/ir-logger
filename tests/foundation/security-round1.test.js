@@ -227,7 +227,7 @@ test('login succeeds when rate-limit refund storage fails', async (t) => {
   });
   const original = db.prepare.bind(db);
   db.prepare = (sql) => {
-    if (String(sql).includes('DELETE FROM rate_limits WHERE bucket_key=?')) {
+    if (String(sql).includes('UPDATE rate_limits SET count=count-1')) {
       throw new Error('refund unavailable');
     }
     return original(sql);
@@ -237,6 +237,60 @@ test('login succeeds when rate-limit refund storage fails', async (t) => {
     password: 'long-password',
   });
   assert.equal(response.status, 200);
+});
+
+test('successful login refunds only its own attempt for the shared IP budget', async (t) => {
+  const { db } = makeDb();
+  const app = createApp(db, { startSweeper: false });
+  t.after(() => close(app, db));
+  await request(app).post('/api/auth/register').send({
+    email: 'victim-budget@example.test',
+    name: 'Victim',
+    password: 'long-password',
+  });
+  await request(app).post('/api/auth/register').send({
+    email: 'attacker-budget@example.test',
+    name: 'Attacker',
+    password: 'long-password',
+  });
+  for (let i = 0; i < 9; i++) {
+    assert.equal(
+      (
+        await request(app).post('/api/auth/login').send({
+          email: 'victim-budget@example.test',
+          password: 'wrong-password',
+        })
+      ).status,
+      401,
+    );
+  }
+  assert.equal(
+    (
+      await request(app).post('/api/auth/login').send({
+        email: 'attacker-budget@example.test',
+        password: 'long-password',
+      })
+    ).status,
+    200,
+  );
+  assert.equal(
+    (
+      await request(app).post('/api/auth/login').send({
+        email: 'victim-budget@example.test',
+        password: 'wrong-password',
+      })
+    ).status,
+    401,
+  );
+  assert.equal(
+    (
+      await request(app).post('/api/auth/login').send({
+        email: 'victim-budget@example.test',
+        password: 'wrong-password',
+      })
+    ).status,
+    429,
+  );
 });
 
 // Pins demo-session access to live, explicitly demo workspaces.
