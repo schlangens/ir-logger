@@ -1,4 +1,6 @@
 let lastPurgeAt = 0;
+let lastGlobalPurgeAt = 0;
+const MAX_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 function windowStart(windowMs) {
   return Math.floor(Date.now() / windowMs) * windowMs;
@@ -22,44 +24,42 @@ function consume(db, { bucketKey, max, windowMs }) {
       // Purging stale buckets is best-effort and must not weaken the limiter's fail-closed check.
     }
   }
+  if (Date.now() - lastGlobalPurgeAt >= 5 * 60 * 1000) {
+    lastGlobalPurgeAt = Date.now();
+    try {
+      db.prepare('DELETE FROM rate_limits WHERE window_start < ?').run(Date.now() - MAX_WINDOW_MS);
+    } catch (_) {
+      // Global stale-row cleanup is best-effort and never weakens the limiter.
+    }
+  }
   return {
     allowed: row.count <= max,
     count: row.count,
+    windowStart: ws,
     retryAfterSeconds: Math.max(1, Math.ceil((ws + windowMs - Date.now()) / 1000)),
   };
 }
 
-function peek(db, { bucketKey, max, windowMs }) {
-  const ws = windowStart(windowMs);
-  const row = db
-    .prepare('SELECT count FROM rate_limits WHERE bucket_key=? AND window_start=?')
-    .get(bucketKey, ws);
-  const count = row?.count || 0;
-  return {
-    allowed: count < max,
-    count,
-    retryAfterSeconds: Math.max(1, Math.ceil((ws + windowMs - Date.now()) / 1000)),
-  };
-}
-
+// `refund-on-success` consumes every attempt and exposes `req.rateLimit.refund()`.
 function rateLimit({ bucket, max, windowMs, keyFn = (req) => req.ip, countMode = 'all' }) {
   return (req, res, next) => {
     try {
       const key = `${bucket}:${keyFn(req)}`;
       const args = { bucketKey: key, max, windowMs };
-      const result =
-        countMode === 'failures' ? peek(req.app.locals.db, args) : consume(req.app.locals.db, args);
+      const result = consume(req.app.locals.db, args);
       if (!result.allowed) {
         res.set('Retry-After', String(result.retryAfterSeconds));
         return res.status(429).json({ error: 'Too many requests' });
       }
-      if (countMode === 'failures') {
+      if (countMode === 'refund-on-success') {
         req.rateLimit = {
-          recordFailure: () => {
+          refund: () => {
             try {
-              consume(req.app.locals.db, args);
+              req.app.locals.db
+                .prepare('DELETE FROM rate_limits WHERE bucket_key=? AND window_start=?')
+                .run(args.bucketKey, result.windowStart);
             } catch (_) {
-              /* failure is recorded best-effort after the response */
+              // A failed refund costs one budget attempt but must never fail login.
             }
           },
         };
@@ -72,4 +72,4 @@ function rateLimit({ bucket, max, windowMs, keyFn = (req) => req.ip, countMode =
   };
 }
 
-module.exports = { rateLimit, consume, peek };
+module.exports = { rateLimit, consume, MAX_WINDOW_MS };

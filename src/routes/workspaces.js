@@ -8,7 +8,8 @@ const user = (u) => ({ id: u.id, email: u.email, name: u.name });
 router.post('/workspaces', requireUser, (req, res, next) => {
   const db = req.app.locals.db;
   const { name } = req.body || {};
-  if (!name) return res.status(400).json({ error: 'Name is required' });
+  if (typeof name !== 'string' || !name || name.length > 200)
+    return res.status(400).json({ error: 'Name is required' });
   try {
     const id = nanoid(16);
     db.transaction(() => {
@@ -31,7 +32,7 @@ router.post('/workspaces', requireUser, (req, res, next) => {
     next(e);
   }
 });
-router.get('/workspaces', requireUser, (req, res) => {
+router.get('/workspaces', requireUser, (req, res, next) => {
   try {
     const rows = req.app.locals.db
       .prepare(
@@ -40,7 +41,7 @@ router.get('/workspaces', requireUser, (req, res) => {
       .all(req.user.id);
     res.json({ workspaces: rows });
   } catch (e) {
-    res.json({ workspaces: [] });
+    next(e);
   }
 });
 router.get('/workspaces/:id', requireWorkspace({}), (req, res, next) => {
@@ -65,7 +66,7 @@ router.post(
   requireWorkspace({ roles: ['owner'] }),
   (req, res, next) => {
     const { email, role } = req.body || {};
-    if (!email || !['analyst', 'viewer'].includes(role))
+    if (typeof email !== 'string' || email.length > 320 || !['analyst', 'viewer'].includes(role))
       return res.status(400).json({ error: 'Valid email and role are required' });
     try {
       const raw = nanoid(32),
@@ -77,7 +78,7 @@ router.post(
         .run(
           id,
           req.workspace.id,
-          email,
+          email.toLowerCase(),
           role,
           hash(raw),
           req.user.id,
@@ -105,15 +106,20 @@ router.post('/invites/:token/accept', requireUser, (req, res, next) => {
     const inv = db.prepare('SELECT * FROM invites WHERE token_hash=?').get(hash(req.params.token));
     if (!inv || inv.accepted_at || new Date(inv.expires_at) <= new Date())
       return res.status(404).json({ error: 'Invite not found' });
-    const existing = db.prepare('SELECT id FROM users WHERE lower(email)=lower(?)').get(inv.email);
+    const existing = db.prepare('SELECT id FROM users WHERE email=?').get(inv.email);
     if (!existing || existing.id !== req.user.id)
       return res.status(404).json({ error: 'Invite not found' });
+    let membership;
     db.transaction(() => {
       db.prepare('INSERT OR IGNORE INTO memberships(user_id,workspace_id,role) VALUES(?,?,?)').run(
         req.user.id,
         inv.workspace_id,
         inv.role,
       );
+      // Re-invites never upgrade an existing membership; return the stored role.
+      membership = db
+        .prepare('SELECT role FROM memberships WHERE user_id=? AND workspace_id=?')
+        .get(req.user.id, inv.workspace_id);
       db.prepare('UPDATE invites SET accepted_at=? WHERE id=?').run(
         new Date().toISOString(),
         inv.id,
@@ -128,7 +134,7 @@ router.post('/invites/:token/accept', requireUser, (req, res, next) => {
       });
     })();
     const w = db.prepare('SELECT id,name FROM workspaces WHERE id=?').get(inv.workspace_id);
-    res.json({ workspace: { ...w, role: inv.role } });
+    res.json({ workspace: { ...w, role: membership.role } });
   } catch (e) {
     next(e);
   }
@@ -138,7 +144,8 @@ router.post(
   requireUser,
   requireWorkspace({ roles: ['owner'] }),
   (req, res, next) => {
-    if (!req.body?.name) return res.status(400).json({ error: 'Name is required' });
+    if (typeof req.body?.name !== 'string' || !req.body.name || req.body.name.length > 200)
+      return res.status(400).json({ error: 'Name is required' });
     try {
       const raw = nanoid(32),
         id = nanoid(16);
@@ -161,7 +168,7 @@ router.post(
     }
   },
 );
-router.get('/workspaces/:id/tokens', requireWorkspace({ roles: ['owner'] }), (req, res, next) => {
+router.get('/workspaces/:id/tokens', requireUser, requireWorkspace({ roles: ['owner'] }), (req, res, next) => {
   try {
     const rows = req.app.locals.db
       .prepare('SELECT id,name,created_at,last_used_at FROM api_tokens WHERE workspace_id=?')

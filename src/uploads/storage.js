@@ -9,6 +9,9 @@ const evidenceStorage = multer.diskStorage({
   filename: (req, file, cb) => cb(null, `${nanoid(24)}.bin`),
 });
 function createUpload(limits) {
-  return multer({ storage: evidenceStorage, limits });
+  return multer({
+    storage: evidenceStorage,
+    limits: { fileSize: 25 * 1024 * 1024, files: 1, fields: 10, ...(limits || {}) },
+  });
 }
 module.exports = { evidenceStorage, evidenceDir, createUpload };

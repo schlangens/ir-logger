@@ -2,10 +2,16 @@ function resolveWorkspaceAccess(db, req, workspaceId) {
   if (!workspaceId) return { ok: false, status: 404, error: 'Workspace not found' };
   try {
     const workspace = db
-      .prepare('SELECT id, is_demo FROM workspaces WHERE id = ?')
+      .prepare('SELECT id, is_demo, expires_at FROM workspaces WHERE id = ?')
       .get(workspaceId);
     if (!workspace) return { ok: false, status: 404, error: 'Workspace not found' };
-    if (req.session && req.session.demoWorkspaceId === workspaceId)
+    if (
+      req.session &&
+      req.session.demoWorkspaceId === workspaceId &&
+      workspace.is_demo === 1 &&
+      workspace.expires_at &&
+      new Date(workspace.expires_at) > new Date()
+    )
       return { ok: true, role: 'owner', isDemo: true };
     if (!req.user) return { ok: false, status: 401, error: 'Authentication required' };
     const membership = db
@@ -18,7 +24,7 @@ function resolveWorkspaceAccess(db, req, workspaceId) {
       isDemo: Boolean(workspace.is_demo),
     };
   } catch (error) {
-    // Fail closed: storage errors never grant workspace access. SPEC §5 mentions 503, but §8.2 and this brief require 403 here.
+    // Fail closed: storage errors never grant workspace access; this guard returns 403 per SPEC §8.2.
     return {
       ok: false,
       status: 403,

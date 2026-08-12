@@ -9,12 +9,13 @@ CREATE TABLE workspaces (
 
 CREATE TABLE users (
   id TEXT PRIMARY KEY,
-  email TEXT NOT NULL UNIQUE,
+  email TEXT NOT NULL COLLATE NOCASE UNIQUE,
   name TEXT NOT NULL,
   password_hash TEXT,
   google_id TEXT UNIQUE,
+  is_demo INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-  CHECK (password_hash IS NOT NULL OR google_id IS NOT NULL)
+  CHECK (password_hash IS NOT NULL OR google_id IS NOT NULL OR is_demo = 1)
 );
 
 CREATE TABLE memberships (

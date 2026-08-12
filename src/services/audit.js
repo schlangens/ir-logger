@@ -17,6 +17,10 @@ function canonical(row) {
 }
 
 function append(db, { workspaceId, actorUserId = null, action, targetType, targetId, payload }) {
+  for (const [name, value] of Object.entries({ workspaceId, action, targetType, targetId })) {
+    if (value === undefined || value === null || value === '')
+      throw new Error(`audit append requires ${name}`);
+  }
   const id = nanoid(16);
   const at = new Date().toISOString();
   const payload_json = JSON.stringify(payload ?? {});
@@ -26,11 +30,11 @@ function append(db, { workspaceId, actorUserId = null, action, targetType, targe
       .get(workspaceId)?.hash || GENESIS_PREV_HASH;
   const row = {
     id,
-    workspace_id: workspaceId,
-    actor_user_id: actorUserId,
-    action,
-    target_type: targetType,
-    target_id: targetId,
+    workspace_id: String(workspaceId),
+    actor_user_id: actorUserId == null ? null : String(actorUserId),
+    action: String(action),
+    target_type: String(targetType),
+    target_id: String(targetId),
     at,
     payload_json,
     prev_hash: prev,
@@ -50,7 +54,7 @@ function verify(db, workspaceId) {
     checked = 0;
   for (const row of db
     .prepare('SELECT * FROM audit_log WHERE workspace_id=? ORDER BY rowid')
-    .all(workspaceId)) {
+    .all(String(workspaceId))) {
     checked++;
     if (
       row.prev_hash !== previous ||

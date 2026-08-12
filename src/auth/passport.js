@@ -4,17 +4,20 @@ const LocalStrategy = require('passport-local').Strategy;
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const { nanoid } = require('nanoid');
 const hashPassword = (password) => bcrypt.hash(password, 12);
+const DUMMY_PASSWORD_HASH = '$2b$12$OMlK4xPY06neMxOFsN2CwOPkJiVsbtRgxI6jKZrkWRmd9fsvTwlr6';
 function configurePassport(db) {
   passport.use(
     new LocalStrategy({ usernameField: 'email' }, (email, password, done) => {
       try {
         const row = db
-          .prepare('SELECT id,email,name,password_hash FROM users WHERE lower(email)=lower(?)')
+          .prepare('SELECT id,email,name,password_hash FROM users WHERE email=?')
           .get(email);
-        if (!row || !row.password_hash) return done(null, false);
+        const passwordHash = row?.password_hash || DUMMY_PASSWORD_HASH;
         bcrypt
-          .compare(password, row.password_hash)
-          .then((ok) => done(null, ok ? { id: row.id, email: row.email, name: row.name } : false))
+          .compare(password, passwordHash)
+          .then((ok) =>
+            done(null, ok && row?.password_hash ? { id: row.id, email: row.email, name: row.name } : false),
+          )
           .catch(done);
       } catch (e) {
         done(e);
@@ -61,7 +64,7 @@ function resolveGoogleUser(db, profile) {
   if (profile.emails?.[0]?.verified !== true) return false;
   let user = db.prepare('SELECT id,email,name FROM users WHERE google_id=?').get(profile.id);
   if (user) return user;
-  user = db.prepare('SELECT id,email,name FROM users WHERE lower(email)=?').get(email);
+  user = db.prepare('SELECT id,email,name FROM users WHERE email=?').get(email);
   if (user) {
     db.prepare('UPDATE users SET google_id=? WHERE id=?').run(profile.id, user.id);
     return user;

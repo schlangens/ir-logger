@@ -16,7 +16,8 @@ function subscribe(incidentId, res, { heartbeatMs = HEARTBEAT_INTERVAL_MS } = {}
     set = new Set();
     channels.set(incidentId, set);
   }
-  set.add(res);
+  const subscriber = { res, cleanup: null };
+  set.add(subscriber);
   const timer = setInterval(() => {
     try {
       res.write(': heartbeat\n\n');
@@ -27,18 +28,23 @@ function subscribe(incidentId, res, { heartbeatMs = HEARTBEAT_INTERVAL_MS } = {}
   timer.unref();
   function cleanup() {
     clearInterval(timer);
-    set.delete(res);
+    set.delete(subscriber);
     if (!set.size) channels.delete(incidentId);
   }
+  subscriber.cleanup = cleanup;
   res.on('close', cleanup);
   return cleanup;
 }
 
 function broadcast(incidentId, type, data) {
-  for (const res of channels.get(incidentId) || []) {
+  for (const subscriber of channels.get(incidentId) || []) {
     try {
-      res.write(`event: ${type}\nid: ${++sequence}\ndata: ${JSON.stringify(data)}\n\n`);
-    } catch (e) {}
+      subscriber.res.write(
+        `event: ${type}\nid: ${++sequence}\ndata: ${JSON.stringify(data)}\n\n`,
+      );
+    } catch (e) {
+      subscriber.cleanup();
+    }
   }
 }
 

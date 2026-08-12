@@ -21,7 +21,7 @@ better-sqlite3
 helmet
 multer
 pdf-lib
-nanoid
+nanoid                ^6.0.1
 dotenv
 ```
 
@@ -33,10 +33,10 @@ supertest
 
 **Minimum Node version: `>=22.12`, pinned via `"engines"` in
 `package.json`.** This floor exists because `nanoid` (already on the
-dependency list above, used for every generated id in this app) ships as
-ESM-only starting at v5 — the app's CommonJS server code loads it via
-dynamic `import()`, and that CJS-importing-ESM interop needs a
-sufficiently current Node line to behave consistently. Do not lower this
+dependency list above, used for every generated id in this app) is ESM-only
+(`"type": "module"`) at v6, and the CommonJS server code loads it with a
+synchronous `require()`. This works because Node >=22.12 enables
+`require(esm)` by default, which is the reason for the floor. Do not lower this
 floor to accommodate an older Node install; update the install instead.
 
 (`node:test`, `node:crypto`, `node:fs`, `node:path`, `node:http` are Node
@@ -158,6 +158,9 @@ loaded from a CDN (the CSP in §3 below forbids external hosts anyway).
   / `DELETE FROM custody_events` before opening a PR that touches
   anything audit- or custody-related — there must be zero matches outside
   of test-fixture raw SQL explicitly commented as such (`SPEC.md` §8.4).
+  The sole named exception is the demo sweeper (`src/services/demo-sweeper.js`),
+  which may delete rows belonging to an expired `is_demo=1` workspace as part
+  of whole-tenant deletion, never row-level surgery on a live chain.
   Evidence access (view/download) is written to `custody_events` **and**
   `audit_log` for the same event — one without the other is a bug
   (`SPEC.md` §2.3).

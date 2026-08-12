@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 const express = require('express');
 const session = require('express-session');
 const passport = require('passport');
@@ -39,7 +39,7 @@ function createApp(db, opts = {}) {
       },
     }),
   );
-  app.use(express.json());
+  app.use(express.json({ limit: '100kb' }));
   app.use(express.urlencoded({ extended: true }));
   const store = createSessionStore(db, opts.sessionStore);
   app.locals.sessionStore = store;
@@ -73,6 +73,9 @@ function createApp(db, opts = {}) {
   app.use('/api', require('./routes/demo'));
   if (opts.startSweeper !== false) sweeper.start(db);
   app.use((error, req, res, next) => {
+    if (error.type === 'entity.too.large')
+      return res.status(413).json({ error: 'Request body too large' });
+    if (error.type === 'entity.parse.failed') return res.status(400).json({ error: 'Malformed JSON' });
     if (error instanceof multer.MulterError)
       return res
         .status(error.code === 'LIMIT_FILE_SIZE' ? 413 : 400)

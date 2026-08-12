@@ -34,7 +34,11 @@ test('a registered user cannot access another tenant', async (t) => {
 test('a matching demo session gets owner-equivalent access', (t) => {
   const { db } = makeDb();
   t.after(() => db.close());
-  db.prepare('INSERT INTO workspaces (id, name, is_demo) VALUES (?, ?, 1)').run('demo', 'Demo');
+  db.prepare('INSERT INTO workspaces (id, name, is_demo, expires_at) VALUES (?, ?, 1, ?)').run(
+    'demo',
+    'Demo',
+    new Date(Date.now() + 60000).toISOString(),
+  );
   assert.deepEqual(resolveWorkspaceAccess(db, { session: { demoWorkspaceId: 'demo' } }, 'demo'), {
     ok: true,
     role: 'owner',
@@ -56,7 +60,11 @@ test('workspace lookup errors deny access without throwing', () => {
 test('real memberships report demo status', (t) => {
   const { db } = makeDb();
   t.after(() => db.close());
-  db.prepare('INSERT INTO workspaces (id, name, is_demo) VALUES (?, ?, 1)').run('demo', 'Demo');
+  db.prepare('INSERT INTO workspaces (id, name, is_demo, expires_at) VALUES (?, ?, 1, ?)').run(
+    'demo',
+    'Demo',
+    new Date(Date.now() + 60000).toISOString(),
+  );
   db.prepare('INSERT INTO users (id, email, name, password_hash) VALUES (?, ?, ?, ?)').run(
     'u',
     'u@example.test',
