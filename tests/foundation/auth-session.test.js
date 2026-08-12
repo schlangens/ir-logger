@@ -4,6 +4,7 @@ const crypto = require('node:crypto');
 const request = require('supertest');
 const { db: makeDb } = require('./helpers');
 const { createApp } = require('../../src/server');
+const { resolveGoogleUser } = require('../../src/auth/passport');
 
 function sidFromCookie(cookie) {
   return cookie.match(/connect\.sid=s%3A([^\.]+)\./)[1];
@@ -173,4 +174,24 @@ test('registration limiter storage failure returns 503', async (t) => {
     password: 'long-password',
   });
   assert.equal(response.status, 503);
+});
+
+test('Google login cannot link to or authenticate a synthetic demo user', (t) => {
+  const { db } = makeDb();
+  t.after(() => db.close());
+  db.prepare('INSERT INTO users (id, email, name, is_demo) VALUES (?, ?, ?, 1)').run(
+    'demo-user',
+    'demo-ws@demo.invalid',
+    'Demo visitor',
+  );
+  const profile = {
+    id: 'google-123',
+    displayName: 'Attacker',
+    emails: [{ value: 'demo-ws@demo.invalid', verified: true }],
+  };
+  assert.equal(resolveGoogleUser(db, profile), false);
+  assert.equal(
+    db.prepare('SELECT google_id FROM users WHERE id=?').get('demo-user').google_id,
+    null,
+  );
 });

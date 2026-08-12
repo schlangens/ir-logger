@@ -2,6 +2,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { evidenceDir } = require('../uploads/storage');
 
+const evidenceRoot = path.resolve(evidenceDir);
+
+function isInsideEvidenceDir(targetPath) {
+  const resolved = path.resolve(targetPath);
+  return resolved === evidenceRoot || resolved.startsWith(`${evidenceRoot}${path.sep}`);
+}
+
 function sweep(db) {
   const now = new Date().toISOString();
   let workspaces;
@@ -29,8 +36,12 @@ function sweep(db) {
           .all(workspaceId);
         for (const { stored_path: storedPath } of files) {
           const filePath = path.isAbsolute(storedPath)
-            ? storedPath
+            ? path.resolve(storedPath)
             : path.resolve(evidenceDir, storedPath);
+          if (!isInsideEvidenceDir(filePath)) {
+            console.error(`demo sweep skipping out-of-bounds path: ${storedPath}`);
+            continue;
+          }
           try {
             fs.unlinkSync(filePath);
           } catch (error) {

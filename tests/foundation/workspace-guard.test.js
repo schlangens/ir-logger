@@ -4,7 +4,7 @@ const crypto = require('node:crypto');
 const request = require('supertest');
 const { db: makeDb } = require('./helpers');
 const { createApp } = require('../../src/server');
-const { resolveWorkspaceAccess } = require('../../src/middleware/workspace-guard');
+const { resolveWorkspaceAccess, resolveActor } = require('../../src/middleware/workspace-guard');
 
 function signedCookie(sid) {
   const signature = crypto
@@ -127,4 +127,71 @@ test('demo-only sessions cannot create user workspaces', async (t) => {
     ).status,
     401,
   );
+});
+
+test('resolveActor returns the real user id when a real user is present', (t) => {
+  const { db } = makeDb();
+  t.after(() => db.close());
+  assert.deepEqual(resolveActor(db, { user: { id: 'real-user' }, session: {} }, 'any'), { id: 'real-user' });
+});
+
+test('resolveActor resolves a demo session to its synthetic user', (t) => {
+  const { db } = makeDb();
+  t.after(() => db.close());
+  db.prepare('INSERT INTO workspaces (id, name, is_demo, expires_at) VALUES (?, ?, 1, ?)').run(
+    'demo-ws',
+    'Demo',
+    new Date(Date.now() + 60000).toISOString(),
+  );
+  db.prepare('INSERT INTO users (id, email, name, is_demo) VALUES (?, ?, ?, 1)').run(
+    'demo-user',
+    'demo-demo-ws@demo.invalid',
+    'Demo visitor',
+  );
+  assert.deepEqual(
+    resolveActor(db, { user: undefined, session: { demoWorkspaceId: 'demo-ws', demoUserId: 'demo-user' } }, 'demo-ws'),
+    { id: 'demo-user' },
+  );
+});
+
+test('resolveActor returns null when no actor can be resolved', (t) => {
+  const { db } = makeDb();
+  t.after(() => db.close());
+  assert.equal(resolveActor(db, { user: undefined, session: {} }, 'missing'), null);
+  db.prepare('INSERT INTO workspaces (id, name, is_demo, expires_at) VALUES (?, ?, 1, ?)').run(
+    'demo-ws',
+    'Demo',
+    new Date(Date.now() + 60000).toISOString(),
+  );
+  assert.equal(
+    resolveActor(db, { user: undefined, session: { demoWorkspaceId: 'other-ws' } }, 'demo-ws'),
+    null,
+  );
+});
+
+test('demo actor cannot access a real workspace via requireWorkspace', async (t) => {
+  const { db } = makeDb();
+  const app = createApp(db, { startSweeper: false });
+  t.after(() => {
+    app.locals.sessionStore.stopCleanup();
+    db.close();
+  });
+
+  db.prepare('INSERT INTO workspaces (id, name) VALUES (?, ?)').run('real-ws', 'Real');
+  db.prepare('INSERT INTO users (id, email, name, is_demo) VALUES (?, ?, ?, 1)').run(
+    'demo-user',
+    'demo-demo-ws@demo.invalid',
+    'Demo visitor',
+  );
+
+  const sid = 'demo-isolated';
+  db.prepare('INSERT INTO sessions (sid, session_json, expires_at) VALUES (?, ?, ?)').run(
+    sid,
+    JSON.stringify({ cookie: { originalMaxAge: null }, demoWorkspaceId: 'demo-ws', demoUserId: 'demo-user' }),
+    Date.now() + 60000,
+  );
+  const response = await request(app)
+    .get('/api/workspaces/real-ws')
+    .set('Cookie', signedCookie(sid));
+  assert.equal(response.status, 401);
 });

@@ -1,6 +1,14 @@
 const HEARTBEAT_INTERVAL_MS = 25000;
 const channels = new Map();
-let sequence = 0;
+
+function getChannel(incidentId) {
+  let channel = channels.get(incidentId);
+  if (!channel) {
+    channel = { subscribers: new Set(), sequence: 0 };
+    channels.set(incidentId, channel);
+  }
+  return channel;
+}
 
 function subscribe(incidentId, res, { heartbeatMs = HEARTBEAT_INTERVAL_MS } = {}) {
   const headers = {
@@ -11,13 +19,9 @@ function subscribe(incidentId, res, { heartbeatMs = HEARTBEAT_INTERVAL_MS } = {}
   if (typeof res.set === 'function') res.set(headers);
   else Object.entries(headers).forEach(([name, value]) => res.setHeader(name, value));
   res.flushHeaders?.();
-  let set = channels.get(incidentId);
-  if (!set) {
-    set = new Set();
-    channels.set(incidentId, set);
-  }
+  const channel = getChannel(incidentId);
   const subscriber = { res, cleanup: null };
-  set.add(subscriber);
+  channel.subscribers.add(subscriber);
   const timer = setInterval(() => {
     try {
       res.write(': heartbeat\n\n');
@@ -28,8 +32,8 @@ function subscribe(incidentId, res, { heartbeatMs = HEARTBEAT_INTERVAL_MS } = {}
   timer.unref();
   function cleanup() {
     clearInterval(timer);
-    set.delete(subscriber);
-    if (!set.size) channels.delete(incidentId);
+    channel.subscribers.delete(subscriber);
+    if (!channel.subscribers.size) channels.delete(incidentId);
   }
   subscriber.cleanup = cleanup;
   res.on('close', cleanup);
@@ -37,10 +41,13 @@ function subscribe(incidentId, res, { heartbeatMs = HEARTBEAT_INTERVAL_MS } = {}
 }
 
 function broadcast(incidentId, type, data) {
-  for (const subscriber of channels.get(incidentId) || []) {
+  const channel = channels.get(incidentId);
+  if (!channel) return;
+  channel.sequence++;
+  for (const subscriber of channel.subscribers) {
     try {
       subscriber.res.write(
-        `event: ${type}\nid: ${++sequence}\ndata: ${JSON.stringify(data)}\n\n`,
+        `event: ${type}\nid: ${channel.sequence}\ndata: ${JSON.stringify(data)}\n\n`,
       );
     } catch (e) {
       subscriber.cleanup();
@@ -49,7 +56,7 @@ function broadcast(incidentId, type, data) {
 }
 
 function subscriberCount(id) {
-  return channels.get(id)?.size || 0;
+  return channels.get(id)?.subscribers.size || 0;
 }
 module.exports = {
   subscribe,
