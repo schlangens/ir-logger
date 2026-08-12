@@ -25,14 +25,16 @@ function getMatrix(db, incidentId) {
   const rows = db
     .prepare(
       `SELECT t.id, t.name, t.tactic, t.url,
-              COUNT(DISTINCT e.id) AS count
+              COALESCE(c.count, 0) AS count
        FROM techniques t
-       LEFT JOIN entry_techniques et ON et.technique_id = t.id
-       LEFT JOIN entries e
-         ON e.id = et.entry_id
-        AND e.incident_id = ?
-       GROUP BY t.id, t.name, t.tactic, t.url
-       ORDER BY t.tactic, t.id`,
+       LEFT JOIN (
+         SELECT et.technique_id, COUNT(DISTINCT e.id) AS count
+         FROM entry_techniques et
+         JOIN entries e ON e.id = et.entry_id
+         WHERE e.incident_id = ?
+         GROUP BY et.technique_id
+       ) c ON c.technique_id = t.id
+       ORDER BY t.id`,
     )
     .all(incidentId);
   const byTactic = new Map(TACTIC_ORDER.map((tactic) => [tactic, []]));
