@@ -13,6 +13,27 @@ Round 1 (sequential)
   Round 3b desktop sync (independent — may run anytime, any round)
 ```
 
+## Merge order: Round 1 before Round 3b
+
+Round 3b (desktop sync) may be *built* at any time, independent of the other
+rounds (see above) — but it must not *merge* before Round 1. Round 1's
+`.gitignore` additions include `ir-logger-sync.json`, the file the desktop
+tool writes its API token into. Round 3b's branch was cut from an older
+`main`, before that entry existed, so its own `.gitignore` does not ignore
+that filename. Merging Round 3b first would leave a token-bearing file
+untracked but *not* ignored on `main` — exactly the setup that lets a
+credential get committed by accident on someone's next `git add .`. Round 1
+must merge first so its `.gitignore` entry is already on `main` by the time
+Round 3b lands.
+
+This is a merge-ordering fact, not a defect in either round: Round 3b's brief
+never owned `.gitignore` (see Round 1's "Owns" list below), so it was correct
+not to edit it. The general rule for any later branch: if it was cut from an
+older `main`, it inherits that older `.gitignore`. Before merging — or before
+writing any code that saves a secret to disk — confirm the ignore rule it
+depends on actually exists on the branch it's merging *into*, not just the
+branch it was written on.
+
 **`src/server.js` has exactly one owner for the life of this project: Round
 1.** No later round — not 2a–2e, not 3a, not any round added after this
 roadmap — ever edits it. Round 1 pre-creates a stub file at every path a
@@ -379,6 +400,36 @@ for `SPEC.md` itself. Any file not listed above that a session believes it
 needs to create should be placed inside its own owned directory tree
 (e.g. a new 2c helper goes under `src/services/` but must still avoid a
 filename another round already owns).
+
+---
+
+## Tracked follow-ups
+
+Work flagged during a round's PR review but deliberately deferred rather
+than done piecemeal. Still agent-scoped, in-repo work — unlike the
+before-launch checklist below — just not assigned to any round's
+acceptance criteria yet.
+
+- [ ] **Move inline SQL in `src/routes/auth.js` and
+  `src/routes/workspaces.js` into service modules**, per `AGENTS.md` §3
+  ("Services own all SQL... routers never write raw SQL inline"). Today
+  `auth.js`'s `POST /register` (the email-uniqueness check and the
+  `INSERT INTO users`) and `GET /session` (the workspace-list join), and
+  every route in `workspaces.js` (`POST /workspaces`, `GET /workspaces`,
+  `GET /workspaces/:id`, `POST /workspaces/:id/invite`, `POST
+  /invites/:token/accept`, `POST /workspaces/:id/tokens`, `GET
+  /workspaces/:id/tokens`, `DELETE /workspaces/:id/tokens/:tokenId`) call
+  `db.prepare(...)` directly instead of through a `src/services/users.js`
+  / `src/services/workspaces.js` module, unlike `audit.js` and
+  `session-store.js` which already have their own service modules. This
+  was raised, not fixed, in the Round 1 foundation PR: creating those two
+  new service modules was outside Round 1's owned file set
+  (`docs/devin-briefs/round1-foundation.md` lists exactly which files that
+  session owns), and Round 2a–2e are about to add their own routes and
+  service modules on top of today's file layout — restructuring `auth.js`
+  and `workspaces.js` now risks colliding with work already in flight in
+  those five concurrent sub-rounds. Do this once, across both files, after
+  Round 2 (2a–2e) merges to `main`, rather than piecemeal per-round.
 
 ---
 

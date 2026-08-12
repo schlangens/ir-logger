@@ -436,12 +436,13 @@ CREATE TABLE workspaces (
 
 CREATE TABLE users (
   id TEXT PRIMARY KEY,
-  email TEXT NOT NULL UNIQUE,
+  email TEXT NOT NULL COLLATE NOCASE UNIQUE,
   name TEXT NOT NULL,
   password_hash TEXT,
   google_id TEXT UNIQUE,
+  is_demo INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-  CHECK (password_hash IS NOT NULL OR google_id IS NOT NULL)
+  CHECK (password_hash IS NOT NULL OR google_id IS NOT NULL OR is_demo = 1)
 );
 
 CREATE TABLE memberships (
@@ -624,8 +625,8 @@ Conventions used throughout this section:
   not found *or* not visible to the caller's workspace (see the rule
   below), `409` conflict (e.g. a workspace resource cap reached), `429`
   rate-limited (with a `Retry-After` header, seconds), `503` a fail-closed
-  guard could not evaluate (rate limiter or workspace-guard storage error —
-  see `AGENTS.md`).
+  rate-limiter or demo-capacity guard could not evaluate (the workspace
+  guard's own storage error is `403`, see §8.2).
 - **Cross-tenant existence rule**: a request for a workspace-scoped resource
   (incident, entry, evidence, etc.) that exists but belongs to a workspace
   the caller is not a member of returns `404`, identical to the resource
@@ -655,6 +656,10 @@ Conventions used throughout this section:
 | GET | `/api/auth/google/callback` | none | — | on success, creates/links a `users` row by `google_id` (or by matching `email` if a password account already exists, linking `google_id` onto it) and redirects to `/`; on failure redirects to `/login?error=1` |
 | GET | `/api/auth/session` | none | — | `200 { user: {...} \| null, workspaces: [{id, name, role}] }` — the frontend's "am I logged in" check; never errors, always 200 |
 
+Public JSON boundaries reject non-string fields and cap email at 320 characters,
+name/workspace name/invite/token name at 200 characters, and passwords at 1024
+characters; malformed JSON returns `400` and bodies over 100KB return `413`.
+
 **Session fixation**: registration, login, and the Google OAuth callback
 all regenerate the session id on success (`req.session.regenerate(...)`
 called before the new authenticated session is established, per
@@ -675,7 +680,7 @@ upgraded into (or confused with) a real authenticated session.
 | GET | `/api/workspaces` | session | — | `200 { workspaces: [...] }` — only workspaces the caller has a membership in |
 | GET | `/api/workspaces/:id` | session (member) | — | `200 { workspace, members: [{userId, name, email, role}] }` |
 | POST | `/api/workspaces/:id/invite` | session (owner) | `{ email, role }` | `201 { inviteUrl }` — `role` must be `analyst` or `viewer` (an owner cannot invite another owner via this endpoint; ownership transfer is a direct database action, out of scope for self-service) |
-| POST | `/api/invites/:token/accept` | session | — | `200 { workspace }` — the raw `:token` from the URL is looked up by `sha256(token)` against `invites.token_hash`, exactly the same pattern §5.11 already uses for `api_tokens.token_hash` (the raw token is never stored, only its hash); creates the membership, sets `accepted_at`. `404` if the hash isn't found, the invite is expired (7-day expiry), or already accepted. |
+| POST | `/api/invites/:token/accept` | session | — | `200 { workspace }` — the raw `:token` from the URL is looked up by `sha256(token)` against `invites.token_hash`, exactly the same pattern §5.11 already uses for `api_tokens.token_hash` (the raw token is never stored, only its hash); creates the membership, sets `accepted_at`. An existing membership is never upgraded by a re-invite; the stored role is returned. `404` if the hash isn't found, the invite is expired (7-day expiry), or already accepted. |
 | POST | `/api/workspaces/:id/tokens` | session (owner) | `{ name }` | `201 { token, tokenId }` — `token` (the raw bearer value) is returned exactly once |
 | GET | `/api/workspaces/:id/tokens` | session (owner) | — | `200 { tokens: [{id, name, createdAt, lastUsedAt}] }` — never returns `token_hash` or the raw value |
 | DELETE | `/api/workspaces/:id/tokens/:tokenId` | session (owner) | — | `200 { success: true }` |
@@ -897,11 +902,14 @@ limiter helper's code comments, not just here.
 ### 8.4 Append-only audit log (and custody log)
 
 No `UPDATE` or `DELETE` SQL statement against `audit_log` **or
-`custody_events`** exists anywhere in the codebase, including in tests
-(tests that need a "dirty" chain to exercise `verify` construct the dirty
-state via a *raw* `db.exec` against a disposable test database file,
+`custody_events`** exists anywhere in the codebase, including in tests,
+except the demo sweeper (`src/services/demo-sweeper.js`) deleting rows of an
+`is_demo=1` workspace past `expires_at` as part of whole-tenant deletion.
+This is never row-level surgery on a live workspace's chain. Tests that need
+a "dirty" chain to exercise `verify` construct the dirty state via a *raw*
+`db.exec` against a disposable test database file,
 clearly commented as a test-only integrity-check fixture, not through any
-application code path). `custody_events` gets the identical rule because
+application code path. `custody_events` gets the identical rule because
 §2.3 requires it: evidence-access history is forensically load-bearing,
 so it is append-only by the same enforcement, not just by convention.
 
@@ -1000,7 +1008,11 @@ proxy layer sitting in front of nginx). Given exactly one real hop:
    not distinguished in the response, to avoid giving an attacker a
    signal either way. On success, in one transaction: insert a
    `workspaces` row (`is_demo=1`,
-   `expires_at = now + 24h`), insert one seeded `incidents` row (`ref:
+   `expires_at = now + 24h`). The same transaction also inserts one synthetic
+   `users` row (`is_demo=1`, name `"Demo visitor"`, email
+   `demo-<workspaceId>@demo.invalid`, with no `password_hash` and no
+   `google_id`); it owns all provenance columns for the seeded rows. Then
+   insert one seeded `incidents` row (`ref:
    "IR-DEMO-0001"`, `title: "Suspicious login → lateral movement — Contoso
    Finance"`, `severity: 'high'`, `status: 'contained'`), insert 6 seeded
    `entries` (a realistic phishing → credential-access → lateral-movement
@@ -1019,8 +1031,9 @@ proxy layer sitting in front of nginx). Given exactly one real hop:
    secret is needed: the response sets the session (see next point) and
    returns `{ workspaceId, incidentId }` for the frontend to redirect into.
 2. **Session**: the response also sets `req.session.demoWorkspaceId =
-   workspace.id` (no `users` row is created — a demo visitor is not a
-   `users`/`memberships` row at all). The workspace guard (§8.2) accepts
+   workspace.id`. No `memberships` row exists and the visitor still is not a
+   real account: access comes solely from `req.session.demoWorkspaceId`.
+   A synthetic `users` row does exist for provenance. The workspace guard (§8.2) accepts
    *either* a real membership row *or* an exact match between the
    requested workspace id and `req.session.demoWorkspaceId`, granting
    `owner`-equivalent permissions for that one workspace only. Any
@@ -1045,7 +1058,8 @@ proxy layer sitting in front of nginx). Given exactly one real hop:
    ("this file is gone") is exactly what was wanted, whether the sweeper
    or something else removed it — then deletes its `custody_events`,
    `evidence`, `entry_techniques`, `entries`, `incidents`, `audit_log`,
-   `api_tokens`, `invites`, `memberships` rows, then the `workspaces` row
+   `api_tokens`, `invites`, `memberships`, synthetic `users` rows, then the
+   `workspaces` row
    itself. A workspace whose cleanup throws for a real reason (not
    `ENOENT` — e.g. a locked file, a permissions error) is logged with its
    workspace id and left for the next tick to retry; it is not deleted

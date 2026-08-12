@@ -1,2 +1,7 @@
-
 Incident_1001/Event_Report.md
+node_modules/
+.env
+.env.*
+!.env.example
+data/
+ir-logger-sync.json
