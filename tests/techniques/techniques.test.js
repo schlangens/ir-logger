@@ -61,3 +61,40 @@ test('rejects non-string filter query parameters', async (t) => {
   assert.equal((await agent.get('/api/techniques?q=a&q=b')).status, 400);
   assert.equal((await agent.get('/api/techniques?tactic=a&tactic=b')).status, 400);
 });
+
+test('rejects an overly long q parameter', async (t) => {
+  const context = makeContext();
+  t.after(() => closeContext(context));
+  const { agent } = await registerWorkspace(context.app);
+  const response = await agent.get(`/api/techniques?q=${'a'.repeat(201)}`);
+  assert.equal(response.status, 400);
+  assert.equal(response.body.error, 'Query too long');
+});
+
+test('techniques list is rate-limited to 60 per minute per user', async (t) => {
+  const context = makeContext();
+  t.after(() => closeContext(context));
+  const { agent } = await registerWorkspace(context.app);
+  for (let i = 0; i < 60; i++) {
+    assert.equal((await agent.get('/api/techniques')).status, 200, `request ${i + 1}`);
+  }
+  const blocked = await agent.get('/api/techniques');
+  assert.equal(blocked.status, 429);
+  assert.equal(blocked.body.error, 'Too many requests');
+  assert.equal(typeof blocked.headers['retry-after'], 'string');
+});
+
+test('techniques list rate limiter fails closed on storage error', async (t) => {
+  const context = makeContext();
+  t.after(() => closeContext(context));
+  const { agent } = await registerWorkspace(context.app);
+  const originalPrepare = context.db.prepare.bind(context.db);
+  context.db.prepare = (sql) => {
+    if (String(sql).includes('rate_limits')) throw new Error('storage');
+    return originalPrepare(sql);
+  };
+  const response = await agent.get('/api/techniques');
+  context.db.prepare = originalPrepare;
+  assert.equal(response.status, 503);
+  assert.equal(response.body.error, 'Rate limiter unavailable');
+});

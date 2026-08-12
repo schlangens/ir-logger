@@ -39,7 +39,10 @@ function getMatrix(db, incidentId) {
     .all(incidentId);
   const byTactic = new Map(TACTIC_ORDER.map((tactic) => [tactic, []]));
   for (const row of rows) {
-    byTactic.get(row.tactic)?.push({
+    if (!byTactic.has(row.tactic)) {
+      throw new Error(`Technique ${row.id} has unknown tactic "${row.tactic}"`);
+    }
+    byTactic.get(row.tactic).push({
       id: row.id,
       name: row.name,
       url: row.url,
