@@ -25,8 +25,8 @@ function search(db, workspaceId, q) {
   const cleaned = sanitize(q);
   if (!cleaned.trim()) return [];
   const match = `"${cleaned.replace(/"/g, '""')}"`;
-  const rows = db.prepare(`SELECT i.id AS incidentId, i.ref AS incidentRef, i.title AS incidentTitle,
-    e.id AS entryId, snippet(entries_fts, 0, ?, ?, '…', 32) AS snippet,
+  const rows = db.prepare(`SELECT i.id AS incident_id, i.ref AS incident_ref, i.title AS incident_title,
+    e.id AS entry_id, snippet(entries_fts, 0, ?, ?, '…', 32) AS snippet,
     bm25(entries_fts) AS rank
     FROM entries_fts JOIN entries e ON e.rowid=entries_fts.rowid
     JOIN incidents i ON i.id=e.incident_id

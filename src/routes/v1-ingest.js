@@ -56,7 +56,7 @@ router.post('/v1/ingest', authLimiter, (req, res, next) => {
     if (safeAuthorName) bodyMd += `\n\n_Originally logged by: ${safeAuthorName} (desktop sync)_`;
     const entry = createEntry(db, { incidentId: incident.id, userId: req.apiToken.user_id, kind, occurredAt: occurredIso, bodyMd });
     touchApiToken(db, req.apiToken.id, new Date().toISOString());
-    res.status(201).json({ incidentId: incident.id, entryId: entry.id });
+    res.status(201).json({ incident_id: incident.id, entry_id: entry.id });
   } catch (e) { if (e.status) return res.status(e.status).json({ error: e.message }); next(e); }
 });
 module.exports = router;

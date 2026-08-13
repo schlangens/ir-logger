@@ -31,7 +31,7 @@ test('incident close and reopen are owner-only', async (t) => {
   const workspace = await owner.post('/api/workspaces').send({ name: 'Close workspace' });
   const id = workspace.body.workspace.id;
   const invite = await owner.post(`/api/workspaces/${id}/invite`).send({ email: 'close-analyst@example.test', role: 'analyst' });
-  await analyst.post(`/api/invites/${invite.body.inviteUrl.split('/').pop()}/accept`);
+  await analyst.post(`/api/invites/${invite.body.invite_url.split('/').pop()}/accept`);
   const incident = await owner.post(`/api/workspaces/${id}/incidents`).send({ title: 'Close me', severity: 'low' });
   assert.equal((await analyst.patch(`/api/incidents/${incident.body.incident.id}`).send({ status: 'closed' })).status, 403);
   const closed = await owner.patch(`/api/incidents/${incident.body.incident.id}`).send({ status: 'closed' });
@@ -75,7 +75,7 @@ test('incident validation, viewer permissions, audit, and update broadcast', asy
   const viewer = await register(fixture.app, 'incident-audit-viewer@example.test', 'Viewer');
   const wid = (await owner.post('/api/workspaces').send({ name: 'Audit workspace' })).body.workspace.id;
   const invite = await owner.post(`/api/workspaces/${wid}/invite`).send({ email: 'incident-audit-viewer@example.test', role: 'viewer' });
-  await viewer.post(`/api/invites/${invite.body.inviteUrl.split('/').pop()}/accept`);
+  await viewer.post(`/api/invites/${invite.body.invite_url.split('/').pop()}/accept`);
   const incident = await owner.post(`/api/workspaces/${wid}/incidents`).send({ title: 'Audited', severity: 'low' });
   const id = incident.body.incident.id;
   assert.equal((await owner.patch(`/api/incidents/${id}`).send({ severity: 'bad' })).status, 400);

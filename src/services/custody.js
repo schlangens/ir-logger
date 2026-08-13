@@ -30,9 +30,9 @@ function list(db, evidenceId) {
     .all(evidenceId)
     .map((row) => ({
       id: row.id,
-      evidenceId: row.evidence_id,
+      evidence_id: row.evidence_id,
       action: row.action,
-      actorUserId: row.actor_user_id,
+      actor_user_id: row.actor_user_id,
       at: row.at,
       note: row.note,
     }));

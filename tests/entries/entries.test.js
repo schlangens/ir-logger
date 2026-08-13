@@ -37,9 +37,9 @@ test('v1 ingest authenticates by hash and auto-creates its incident', async (t) 
     .set('Authorization', `Bearer ${token.body.token}`)
     .send({ incident_ref: 'DESKTOP-1', kind: 'technical', category: 'Discovery', body: 'collected host data', author_name: 'workstation' });
   assert.equal(response.status, 201);
-  const incident = fixture.db.prepare('SELECT title FROM incidents WHERE id=?').get(response.body.incidentId);
+  const incident = fixture.db.prepare('SELECT title FROM incidents WHERE id=?').get(response.body.incident_id);
   assert.equal(incident.title, 'Synced from desktop');
-  const entry = fixture.db.prepare('SELECT body_md FROM entries WHERE id=?').get(response.body.entryId);
+  const entry = fixture.db.prepare('SELECT body_md FROM entries WHERE id=?').get(response.body.entry_id);
   assert.match(entry.body_md, /^\*\*Category:\*\* Discovery/);
   assert.match(entry.body_md, /Originally logged by: workstation \(desktop sync\)_$/);
 });
@@ -63,7 +63,7 @@ test('v1 ingest validates incident_ref, body, category, occurred_at, and author_
   assert.equal((await send({ ...base, occurred_at: 'x'.repeat(5000) })).status, 400);
   const authorResponse = await send({ ...base, author_name: 'foo\nbar' });
   assert.equal(authorResponse.status, 201);
-  const entry = fixture.db.prepare('SELECT body_md FROM entries WHERE id=?').get(authorResponse.body.entryId);
+  const entry = fixture.db.prepare('SELECT body_md FROM entries WHERE id=?').get(authorResponse.body.entry_id);
   assert.ok(entry);
   assert.ok(!entry.body_md.includes('foo\nbar'), 'newlines must be stripped from author_name');
   assert.ok(entry.body_md.includes('Originally logged by: foobar (desktop sync)'));
@@ -113,7 +113,7 @@ test('entry list kind and limit filters, validation, viewer denial, tenant isola
   const wid = (await owner.post('/api/workspaces').send({ name: 'Entry filters' })).body.workspace.id;
   const otherWid = (await other.post('/api/workspaces').send({ name: 'Other entries' })).body.workspace.id;
   const invite = await owner.post(`/api/workspaces/${wid}/invite`).send({ email: 'entry-filter-viewer@example.test', role: 'viewer' });
-  await viewer.post(`/api/invites/${invite.body.inviteUrl.split('/').pop()}/accept`);
+  await viewer.post(`/api/invites/${invite.body.invite_url.split('/').pop()}/accept`);
   const incident = await owner.post(`/api/workspaces/${wid}/incidents`).send({ title: 'Entries', severity: 'low' });
   const otherIncident = await other.post(`/api/workspaces/${otherWid}/incidents`).send({ title: 'Other', severity: 'low' });
   const first = await owner.post(`/api/incidents/${incident.body.incident.id}/entries`).send({ kind: 'timeline', body_md: 'one' });
@@ -143,7 +143,7 @@ test('ingest rejects unknown tokens, validates before touching last_used_at, and
   const wid = (await owner.post('/api/workspaces').send({ name: 'Ingest limits' })).body.workspace.id;
   const tokenResponse = await owner.post(`/api/workspaces/${wid}/tokens`).send({ name: 'Sync' });
   const rawToken = tokenResponse.body.token;
-  const tokenId = tokenResponse.body.tokenId;
+  const tokenId = tokenResponse.body.token_id;
   const beforeRows = fixture.db.prepare('SELECT COUNT(*) AS count FROM incidents').get().count;
   const unknown = await request(fixture.app).post('/api/v1/ingest').set('Authorization', 'Bearer unknown-token').send({
     incident_ref: 'UNKNOWN', kind: 'timeline', body: 'ignored',

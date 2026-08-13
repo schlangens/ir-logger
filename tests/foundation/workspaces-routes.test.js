@@ -38,7 +38,7 @@ test('workspace create/list/get enforce membership and response shape', async (t
   assert.ok(Array.isArray(memberView.body.members));
   const ownerId = db.prepare('SELECT id FROM users WHERE email=?').get('owner@example.test').id;
   assert.deepEqual(memberView.body.members[0], {
-    userId: ownerId,
+    user_id: ownerId,
     name: 'Owner',
     email: 'owner@example.test',
     role: 'owner',
@@ -60,7 +60,7 @@ test('owner invites and invited user accepts by raw token hash', async (t) => {
     .post(`/api/workspaces/${id}/invite`)
     .send({ email: 'invited@example.test', role: 'analyst' });
   assert.equal(invite.status, 201);
-  const rawToken = invite.body.inviteUrl.split('/').pop();
+  const rawToken = invite.body.invite_url.split('/').pop();
   const stored = db.prepare('SELECT token_hash FROM invites WHERE workspace_id = ?').get(id);
   assert.equal(stored.token_hash, crypto.createHash('sha256').update(rawToken).digest('hex'));
   assert.notEqual(stored.token_hash, rawToken);
@@ -93,7 +93,7 @@ test('non-owners cannot invite or manage tokens, and token lifecycle hides secre
   const tokenInvite = await owner
     .post(`/api/workspaces/${id}/invite`)
     .send({ email: 'token-analyst@example.test', role: 'analyst' });
-  const rawInvite = tokenInvite.body.inviteUrl.split('/').pop();
+  const rawInvite = tokenInvite.body.invite_url.split('/').pop();
   await analyst.post(`/api/invites/${rawInvite}/accept`);
   assert.equal(
     (
@@ -116,7 +116,7 @@ test('non-owners cannot invite or manage tokens, and token lifecycle hides secre
   assert.equal(JSON.stringify(list.body), JSON.stringify(list.body).replaceAll(raw, ''));
   assert.equal(JSON.stringify(list.body).includes('token_hash'), false);
   assert.equal(
-    (await owner.delete(`/api/workspaces/${id}/tokens/${created.body.tokenId}`)).status,
+    (await owner.delete(`/api/workspaces/${id}/tokens/${created.body.token_id}`)).status,
     200,
   );
   assert.equal((await owner.get(`/api/workspaces/${id}/tokens`)).body.tokens.length, 0);
@@ -134,7 +134,7 @@ test('token deletion rolls back when its audit append fails', async (t) => {
     if (String(sql).includes('INSERT INTO audit_log')) throw new Error('audit unavailable');
     return originalPrepare(sql);
   };
-  const response = await owner.delete(`/api/workspaces/${id}/tokens/${created.body.tokenId}`);
+  const response = await owner.delete(`/api/workspaces/${id}/tokens/${created.body.token_id}`);
   assert.equal(response.status, 500);
-  assert.ok(db.prepare('SELECT id FROM api_tokens WHERE id=?').get(created.body.tokenId));
+  assert.ok(db.prepare('SELECT id FROM api_tokens WHERE id=?').get(created.body.token_id));
 });

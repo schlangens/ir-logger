@@ -20,7 +20,7 @@ test('search is workspace-scoped and safely accepts FTS punctuation, NUL bytes, 
   assert.equal((await one.get(`/api/workspaces/${w1}/search`).query({ q: '\x00' })).status, 200);
   const embedded = await one.get(`/api/workspaces/${w1}/search`).query({ q: 'a\x00b' });
   assert.equal(embedded.status, 200);
-  assert.ok(embedded.body.results.some((r) => r.entryId));
+  assert.ok(embedded.body.results.some((r) => r.entry_id));
   // Over-long query is capped, not a 500.
   assert.equal((await one.get(`/api/workspaces/${w1}/search`).query({ q: 'x'.repeat(300) })).status, 200);
 });
@@ -40,7 +40,7 @@ test('search validates q and returns ranked, escaped snippet result objects', as
   assert.equal(response.status, 200);
   assert.ok(response.body.results.length >= 1);
   for (const result of response.body.results) {
-    assert.deepEqual(Object.keys(result).sort(), ['entryId', 'incidentId', 'incidentRef', 'incidentTitle', 'rank', 'snippet'].sort());
+    assert.deepEqual(Object.keys(result).sort(), ['entry_id', 'incident_id', 'incident_ref', 'incident_title', 'rank', 'snippet'].sort());
     assert.equal(typeof result.snippet, 'string');
     assert.equal(typeof result.rank, 'number');
   }
