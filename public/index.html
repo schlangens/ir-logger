@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Incident Logger</title>
+  <link rel="stylesheet" href="/css/tokens.css">
+  <link rel="stylesheet" href="/css/components.css">
+</head>
+<body>
+  <main class="page" data-page="landing">
+    <section class="landing__hero">
+      <div>
+        <h1>Incident response, shared and searchable</h1>
+        <p>Build a live timeline, tag MITRE ATT&CK techniques, chain evidence custody, and export reports — together.</p>
+        <div class="landing__actions">
+          <a class="btn btn--primary" href="/register.html">Start free</a>
+          <button class="btn btn--secondary" data-demo type="button">Try the live demo</button>
+        </div>
+        <div data-demo-status></div>
+      </div>
+      <div class="landing__card" aria-hidden="true">
+        <div class="landing__card-row">
+          <span class="pill pill--high">HIGH</span>
+          <span class="mono">IR-2026-0001</span>
+          <span class="pill pill--status-open">OPEN</span>
+        </div>
+        <div class="landing__card-row">
+          <span class="entry__kind">Technical</span>
+          <span class="mono">2026-08-13 00:55 UTC</span>
+        </div>
+        <div class="landing__card-row landing__card-row--no-border">
+          <span class="entry__kind">Technical</span>
+          <span>Spearphishing attachment detonated macro</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="landing__features" aria-label="Features">
+      <div class="landing__feature">
+        <h3>Live timeline</h3>
+        <p>Every analyst sees entries as they are logged, with no refresh and no lost context.</p>
+      </div>
+      <div class="landing__feature">
+        <h3>ATT&CK matrix</h3>
+        <p>Tag techniques and see coverage gaps across the full MITRE Enterprise matrix.</p>
+      </div>
+      <div class="landing__feature">
+        <h3>Evidence integrity</h3>
+        <p>SHA-256 hashes and an append-only custody trail protect every uploaded file.</p>
+      </div>
+    </section>
+
+    <footer class="landing__footer">
+      <a href="/login.html">Sign in</a>
+      <a href="/register.html">Create account</a>
+    </footer>
+  </main>
+
+  <script type="module" src="/js/page-index.js"></script>
+</body>
+</html>

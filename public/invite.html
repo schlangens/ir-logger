@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Accept invitation — Incident Logger</title>
+  <link rel="stylesheet" href="/css/tokens.css">
+  <link rel="stylesheet" href="/css/components.css">
+</head>
+<body>
+  <main class="auth">
+    <h1>Accept invitation</h1>
+    <p class="text-secondary">You're about to join a workspace. Sign in or create an account first, then accept the invite.</p>
+
+    <form id="invite-form" novalidate>
+      <div class="form__error" data-error hidden></div>
+      <div class="form__success" data-success hidden>Invitation accepted. Redirecting…</div>
+      <button class="btn btn--primary btn--block" type="submit">Accept invitation</button>
+    </form>
+
+    <p class="auth__footer">
+      <a href="/login.html">Sign in</a> or <a href="/register.html">create an account</a>
+    </p>
+  </main>
+
+  <script type="module" src="/js/page-invite.js"></script>
+</body>
+</html>
