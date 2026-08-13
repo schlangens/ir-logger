@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const { requireUser, requireSession, requireWorkspace, resolveWorkspaceAccess } = require('../middleware/workspace-guard');
+const { requireSession, requireWorkspace, resolveWorkspaceAccess, resolveActor } = require('../middleware/workspace-guard');
 const incidents = require('../services/incidents');
 const hub = require('../sse/hub');
 
@@ -22,12 +22,12 @@ function resolveIncident(req) {
 }
 function fail(res, error) { return res.status(error.status || 500).json({ error: error.message || 'Internal server error' }); }
 
-router.post('/workspaces/:id/incidents', requireUser, requireWorkspace({ roles: ['owner', 'analyst'] }), (req, res, next) => {
+router.post('/workspaces/:id/incidents', requireWorkspace({ roles: ['owner', 'analyst'] }), (req, res, next) => {
   const { title, summary = '', severity } = req.body || {};
   if (typeof title !== 'string' || !title || title.length > 500 || typeof summary !== 'string' || !incidents.SEVERITIES.includes(severity))
     return res.status(400).json({ error: 'Valid title, summary, and severity are required' });
   try {
-    const incident = incidents.createIncident(req.app.locals.db, { workspaceId: req.workspace.id, userId: req.user.id, title, summary, severity });
+    const incident = incidents.createIncident(req.app.locals.db, { workspaceId: req.workspace.id, userId: req.actor.id, title, summary, severity });
     res.status(201).json({ incident });
   } catch (e) { if (e.status) return fail(res, e); next(e); }
 });
@@ -64,18 +64,20 @@ router.get('/incidents/:id', requireSession, (req, res, next) => {
     res.json({ incident: result });
   } catch (e) { next(e); }
 });
-router.patch('/incidents/:id', requireUser, (req, res, next) => {
+router.patch('/incidents/:id', (req, res, next) => {
   try {
     const { incident, access } = resolveIncident(req);
     if (!incident) return res.status(404).json({ error: 'Incident not found' });
     if (!access.ok) return res.status(access.status).json({ error: access.error });
     if (!['owner', 'analyst'].includes(access.role)) return res.status(403).json({ error: 'Forbidden' });
+    const actor = resolveActor(req.app.locals.db, req, incident.workspace_id);
+    if (!actor) return res.status(401).json({ error: 'Authentication required' });
     const changes = req.body || {};
     for (const key of ['title', 'summary']) {
       if (Object.hasOwn(changes, key) && (typeof changes[key] !== 'string' || changes[key].length > 500))
         return res.status(400).json({ error: 'Invalid title or summary' });
     }
-    const result = incidents.updateIncident(req.app.locals.db, { id: incident.id, workspaceId: incident.workspace_id, userId: req.user.id, role: access.role, changes });
+    const result = incidents.updateIncident(req.app.locals.db, { id: incident.id, workspaceId: incident.workspace_id, userId: actor.id, role: access.role, changes });
     if (!result) return res.status(404).json({ error: 'Incident not found' });
     if (Object.keys(result.changes).length) hub.broadcast(incident.id, 'incident.updated', { id: incident.id, changes: result.changes });
     res.json({ incident: result.after });

@@ -65,7 +65,7 @@ test('demo creation seeds the full scenario, evidence, and persisted session gra
   const { db, app, evidenceDir } = appFor(t);
   const response = await demoRequest(app);
   assert.equal(response.status, 201);
-  const { workspaceId, incidentId } = response.body;
+  const { workspace_id: workspaceId, incident_id: incidentId } = response.body;
   const workspace = db.prepare('SELECT * FROM workspaces WHERE id=?').get(workspaceId);
   assert.equal(workspace.is_demo, 1);
   assert.ok(new Date(workspace.expires_at) > new Date(Date.now() + 23 * 60 * 60 * 1000));
@@ -147,8 +147,8 @@ test('demo creation regenerates the session and reuses an existing live grant', 
 
   const second = await demoRequest(agent);
   assert.equal(second.status, 200);
-  assert.equal(second.body.workspaceId, first.body.workspaceId);
-  assert.equal(second.body.incidentId, first.body.incidentId);
+  assert.equal(second.body.workspace_id, first.body.workspace_id);
+  assert.equal(second.body.incident_id, first.body.incident_id);
   const secondSid = sessionId(second);
   assert.notEqual(secondSid, firstSid);
 
@@ -270,7 +270,7 @@ test('demo visitor can upload evidence and view or download it', async (t) => {
   const agent = request.agent(app);
   const demo = await demoRequest(agent);
   assert.equal(demo.status, 201);
-  const { workspaceId, incidentId } = demo.body;
+  const { workspace_id: workspaceId, incident_id: incidentId } = demo.body;
   const userId = db
     .prepare("SELECT id FROM users WHERE email='demo-'||?||'@demo.invalid'")
     .get(workspaceId).id;
@@ -340,11 +340,155 @@ test('demo actor is confined to its own demo workspace', async (t) => {
   );
 });
 
+test('demo visitor creates an incident attributed to the resolved demo user', async (t) => {
+  const { db, app } = appFor(t);
+  const agent = request.agent(app);
+  const demo = await demoRequest(agent);
+  assert.equal(demo.status, 201);
+  const { workspace_id: workspaceId, incident_id: incidentId } = demo.body;
+  const userId = db.prepare("SELECT id FROM users WHERE email='demo-'||?||'@demo.invalid'").get(workspaceId).id;
+  const sid = sessionId(demo);
+  assert.notEqual(userId, sid);
+
+  const created = await agent.post(`/api/workspaces/${workspaceId}/incidents`).send({ title: 'Visitor created incident', severity: 'medium' });
+  assert.equal(created.status, 201);
+  const incidentIdCreated = created.body.incident.id;
+  assert.equal(db.prepare('SELECT created_by FROM incidents WHERE id=?').get(incidentIdCreated).created_by, userId);
+  assert.equal(
+    db.prepare("SELECT actor_user_id FROM audit_log WHERE action='incident.created' AND target_id=?").get(incidentIdCreated).actor_user_id,
+    userId,
+  );
+});
+
+test('demo visitor adds a technical entry with a technique tag attributed to the demo user', async (t) => {
+  const { db, app } = appFor(t);
+  const agent = request.agent(app);
+  const demo = await demoRequest(agent);
+  assert.equal(demo.status, 201);
+  const { workspace_id: workspaceId, incident_id: incidentId } = demo.body;
+  const userId = db.prepare("SELECT id FROM users WHERE email='demo-'||?||'@demo.invalid'").get(workspaceId).id;
+
+  const created = await agent.post(`/api/incidents/${incidentId}/entries`).send({
+    kind: 'technical',
+    body_md: 'Demo visitor technique entry',
+    technique_ids: ['T1059'],
+  });
+  assert.equal(created.status, 201);
+  const entryId = created.body.entry.id;
+  assert.equal(db.prepare('SELECT author_user_id FROM entries WHERE id=?').get(entryId).author_user_id, userId);
+  assert.deepEqual(
+    db.prepare('SELECT technique_id FROM entry_techniques WHERE entry_id=? ORDER BY rowid').all(entryId).map((r) => r.technique_id),
+    ['T1059'],
+  );
+  assert.equal(
+    db.prepare("SELECT actor_user_id FROM audit_log WHERE action='entry.created' AND target_id=?").get(entryId).actor_user_id,
+    userId,
+  );
+});
+
+test('demo visitor changes severity and status with an audit row attributed to the demo user', async (t) => {
+  const { db, app } = appFor(t);
+  const agent = request.agent(app);
+  const demo = await demoRequest(agent);
+  assert.equal(demo.status, 201);
+  const { workspace_id: workspaceId, incident_id: incidentId } = demo.body;
+  const userId = db.prepare("SELECT id FROM users WHERE email='demo-'||?||'@demo.invalid'").get(workspaceId).id;
+
+  const patched = await agent.patch(`/api/incidents/${incidentId}`).send({ severity: 'medium', status: 'closed' });
+  assert.equal(patched.status, 200);
+  const row = db.prepare('SELECT severity, status, closed_at FROM incidents WHERE id=?').get(incidentId);
+  assert.equal(row.severity, 'medium');
+  assert.equal(row.status, 'closed');
+  assert.ok(row.closed_at);
+
+  const auditRows = db.prepare("SELECT actor_user_id, payload_json FROM audit_log WHERE action='incident.updated' AND target_id=? ORDER BY rowid").all(incidentId);
+  assert.ok(auditRows.length >= 1);
+  for (const auditRow of auditRows) {
+    assert.equal(auditRow.actor_user_id, userId);
+  }
+});
+
+test('demo incident cap is reachable through a real demo session', async (t) => {
+  const { db, app } = appFor(t);
+  const agent = request.agent(app);
+  const demo = await demoRequest(agent);
+  assert.equal(demo.status, 201);
+  const { workspace_id: workspaceId } = demo.body;
+
+  for (let i = 0; i < 4; i++) {
+    const created = await agent.post(`/api/workspaces/${workspaceId}/incidents`).send({ title: `Demo cap ${i}`, severity: 'low' });
+    assert.equal(created.status, 201, `creation ${i}`);
+  }
+  const rejected = await agent.post(`/api/workspaces/${workspaceId}/incidents`).send({ title: 'Demo cap overflow', severity: 'low' });
+  assert.equal(rejected.status, 409);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM incidents WHERE workspace_id=?').get(workspaceId).n, 5);
+});
+
+test('real user creating and patching an incident in their own workspace is unchanged', async (t) => {
+  const { db, app } = appFor(t);
+  const agent = request.agent(app);
+  const registered = await agent.post('/api/auth/register').send({
+    email: 'real-unaffected@example.test',
+    name: 'Real',
+    password: 'long-password',
+  });
+  assert.equal(registered.status, 201);
+  const userId = registered.body.user.id;
+
+  const workspace = await agent.post('/api/workspaces').send({ name: 'Real workspace' });
+  const workspaceId = workspace.body.workspace.id;
+
+  const created = await agent.post(`/api/workspaces/${workspaceId}/incidents`).send({ title: 'Real incident', severity: 'low' });
+  assert.equal(created.status, 201);
+  const incidentId = created.body.incident.id;
+  assert.equal(db.prepare('SELECT created_by FROM incidents WHERE id=?').get(incidentId).created_by, userId);
+  assert.equal(
+    db.prepare("SELECT actor_user_id FROM audit_log WHERE action='incident.created' AND target_id=?").get(incidentId).actor_user_id,
+    userId,
+  );
+
+  const patched = await agent.patch(`/api/incidents/${incidentId}`).send({ severity: 'high' });
+  assert.equal(patched.status, 200);
+  assert.equal(db.prepare('SELECT severity FROM incidents WHERE id=?').get(incidentId).severity, 'high');
+});
+
+test('demo actor cannot mint an API token or send an invite', async (t) => {
+  const { app } = appFor(t);
+  const agent = request.agent(app);
+  const demo = await demoRequest(agent);
+  assert.equal(demo.status, 201);
+  const { workspace_id: workspaceId } = demo.body;
+
+  const token = await agent.post(`/api/workspaces/${workspaceId}/tokens`).send({ name: 'Demo token' });
+  assert.equal(token.status, 401);
+
+  const invite = await agent.post(`/api/workspaces/${workspaceId}/invite`).send({ email: 'demo-invite@example.test', role: 'viewer' });
+  assert.equal(invite.status, 401);
+});
+
+test('POST /api/demo refuses an authenticated user without destroying their session', async (t) => {
+  const { app } = appFor(t);
+  const agent = request.agent(app);
+  const registered = await agent.post('/api/auth/register').send({
+    email: 'demo-auth-refuse@example.test',
+    name: 'Auth',
+    password: 'long-password',
+  });
+  assert.equal(registered.status, 201);
+
+  const demo = await agent.post('/api/demo').set('Host', 'localhost').set('Origin', 'http://localhost');
+  assert.equal(demo.status, 409);
+  assert.equal(demo.body.error, 'Log out to start a demo session');
+
+  const workspace = await agent.post('/api/workspaces').send({ name: 'Still authenticated' });
+  assert.equal(workspace.status, 201);
+});
+
 test('synthetic demo user cannot authenticate by password or Google', async (t) => {
   const { db, app } = appFor(t);
   const demo = await demoRequest(app);
   assert.equal(demo.status, 201);
-  const email = `demo-${demo.body.workspaceId}@demo.invalid`;
+  const email = `demo-${demo.body.workspace_id}@demo.invalid`;
 
   const login = await request(app).post('/api/auth/login').send({
     email,

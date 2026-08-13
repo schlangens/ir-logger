@@ -28,6 +28,11 @@ function requireSameOrigin(req, res, next) {
   return res.status(403).json({ error: 'Invalid origin' });
 }
 
+function rejectAuthenticated(req, res, next) {
+  if (req.user) return res.status(409).json({ error: 'Log out to start a demo session' });
+  next();
+}
+
 async function reuseExistingDemoGrant(req, res, next) {
   const existingWorkspaceId = req.session?.demoWorkspaceId;
   if (!existingWorkspaceId) return next();
@@ -48,7 +53,7 @@ async function reuseExistingDemoGrant(req, res, next) {
     await regenerate(req);
     req.session.demoWorkspaceId = existingWorkspaceId;
     req.session.demoUserId = user.id;
-    return res.status(200).json({ workspaceId: existingWorkspaceId, incidentId: incident.id });
+    return res.status(200).json({ workspace_id: existingWorkspaceId, incident_id: incident.id });
   } catch {
     return next();
   }
@@ -57,6 +62,7 @@ async function reuseExistingDemoGrant(req, res, next) {
 router.post(
   '/demo',
   requireSameOrigin,
+  rejectAuthenticated,
   reuseExistingDemoGrant,
   rateLimit({ bucket: 'demo', max: 3, windowMs: 24 * 60 * 60 * 1000 }),
   async (req, res, next) => {
@@ -77,8 +83,8 @@ router.post(
       req.session.demoWorkspaceId = result.workspaceId;
       req.session.demoUserId = result.userId;
       return res.status(201).json({
-        workspaceId: result.workspaceId,
-        incidentId: result.incidentId,
+        workspace_id: result.workspaceId,
+        incident_id: result.incidentId,
       });
     } catch (error) {
       if (phase === 'count') return res.status(503).json({ error: CAPACITY_ERROR });

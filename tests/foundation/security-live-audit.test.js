@@ -108,7 +108,7 @@ test('demo session is refused with a consistent status on every route across a r
     .set('Host', 'localhost')
     .set('Origin', 'http://localhost');
   assert.equal(demoResponse.status, 201);
-  assert.notEqual(demoResponse.body.workspaceId, workspaceId);
+  assert.notEqual(demoResponse.body.workspace_id, workspaceId);
 
   const secrets = [
     workspaceId,
@@ -279,7 +279,7 @@ test('workspace guard denies an expired demo grant on its own, before and indepe
     .set('Host', 'localhost')
     .set('Origin', 'http://localhost');
   assert.equal(demoResponse.status, 201);
-  const { workspaceId, incidentId } = demoResponse.body;
+  const { workspace_id: workspaceId, incident_id: incidentId } = demoResponse.body;
 
   // Sanity: access works while the grant is live.
   assert.equal((await demoAgent.get(`/api/workspaces/${workspaceId}`)).status, 200);
