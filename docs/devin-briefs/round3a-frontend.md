@@ -300,16 +300,18 @@ workspace access:
 | View/download evidence, view custody trail | **Allowed** |
 | Export PDF / Markdown | **Allowed** |
 | View audit log + run "Verify integrity" | **Allowed** (a demo grant's `owner`-equivalent role passes the audit route's owner check) |
-| Create a new incident | **Refused (`401`)** |
-| Edit an incident's severity or status | **Refused (`401`)** |
-| Add a timeline entry | **Refused (`401`)** |
-| Create a workspace, invite a member, create/list/revoke an API token | **Refused (`401`)** |
+| Create a new incident | **Allowed**, capped at 5 per demo workspace (1 seeded + 4); the 6th returns `409` |
+| Edit an incident's severity or status | **Allowed** |
+| Add a timeline entry, with technique tags | **Allowed** |
+| Create a workspace, invite a member, create/list/revoke an API token | **Refused (`401`)** — these need a real account, not merely workspace access |
 
-So on an `is_demo` workspace: show the timeline, matrix, evidence list
-(with a working upload control), search, export buttons, and the Audit
-tab exactly as for a real owner — but hide the "New incident" button, the
-entry composer, and the severity/status edit controls (same visual
-treatment as hiding them for a `viewer`), and never surface "Invite" or
+So on an `is_demo` workspace, the visitor gets the full product: show the
+timeline, matrix, evidence list (with a working upload control), search,
+export buttons, the Audit tab, AND the "New incident" button, the entry
+composer and the severity/status controls — a demo visitor can genuinely
+use the live timeline, which is the whole point of the demo. Surface the
+5-incident cap gracefully: when the 6th create returns `409`, explain the
+demo limit rather than showing a generic failure. Never surface "Invite" or
 "API tokens" controls in settings for a demo session at all (there is no
 real workspace-settings concept for an anonymous demo grant). If in doubt
 for any action not listed above, check whether its route uses
