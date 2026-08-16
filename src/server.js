@@ -93,7 +93,7 @@ if (require.main === module) {
   const db = openDatabase();
   runMigrations(db);
   const app = createApp(db);
-  app.listen(process.env.PORT || 3059, () =>
+  app.listen(process.env.PORT || 3059, '127.0.0.1', () =>
     console.log(`ir-logger listening on ${process.env.PORT || 3059}`),
   );
 }
