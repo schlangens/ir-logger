@@ -13,12 +13,21 @@ coding agents that built this system live in [`AGENTS.md`](AGENTS.md). This
 document is the guided tour through the security-relevant parts of both, plus
 the parts that only live in the git history and the test suite.
 
-**Where this project actually stands:** the backend is built and tested (166
-Node tests + 9 Python tests, all passing as of this writing). There is no
-browser interface yet and nothing is deployed anywhere — no live URL exists to
-visit. Everything described below was exercised against a real running
-instance of the server on a development machine, via its HTTP API, not against
-a production deployment, because there isn't one.
+**Where this project actually stands:** built, tested (184 Node tests + 9
+Python tests) and **deployed live at https://ir.scottslab.io**, behind a
+Let's Encrypt certificate, with the application bound to loopback and reached
+only through the reverse proxy. The episodes below were originally exercised
+against a running instance on a development machine; the same journeys were
+re-run against the public deployment before this line was written.
+
+Two honest notes about that deployment, in the spirit of the rest of this
+document. First, one item on the before-launch checklist in `ROADMAP.md` was
+skipped, not satisfied: the desktop tool's sync has never been exercised
+against the live server, only against a stand-in — the checklist warned
+against exactly that and it shipped anyway. Second, the resource-exhaustion
+claim below is scoped to the *demo* path; account registration is currently
+open, and a registered user is not subject to the same per-workspace ceiling,
+so that claim should not be read as covering every anonymous visitor.
 
 ---
 

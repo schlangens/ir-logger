@@ -2,7 +2,7 @@
 
 **Status:** Round 1 (foundation), all five Round 2 sub-briefs (2a–2e), and
 Round 3b (desktop sync) are merged to `main`, backed by a green test suite
-(166 Node tests + 9 Python tests) that now runs in CI on every PR and push
+(184 Node tests + 9 Python tests) that now runs in CI on every PR and push
 to `main` (`.github/workflows/tests.yml`). What remains: Round 3a (the
 web frontend — `public/`, still unbuilt, so there is no browser UI yet)
 and the real-world "Before-launch checklist" items at the bottom of this

@@ -22,10 +22,11 @@ off by default and never required.
 
 **Status:** the backend (accounts, workspaces, incidents, entries, technique
 tagging, evidence, search, export, audit log, and an instant demo-workspace
-API) is built and covered by the test suite below. There is no web frontend
-yet — the browser UI (`public/`) is the one remaining piece before this is a
-complete product — and **nothing is deployed**; there is no live site to
-visit. See [`ROADMAP.md`](ROADMAP.md) for what's shipped and what's left.
+API) is built and covered by the test suite below, and the browser UI is now
+built too. **It is deployed and live at https://ir.scottslab.io** — open it
+and click "Try the live demo" to use a disposable sandbox with no signup.
+See [`ROADMAP.md`](ROADMAP.md) for what's shipped and what's left, including
+the before-launch checklist and the one item on it that was skipped.
 
 ---
 

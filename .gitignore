@@ -7,3 +7,6 @@ data/
 ir-logger-sync.json
 __pycache__/
 *.pyc
+
+# Deploy-local pm2 config: contains this box's secrets path and interpreter path.
+ecosystem.config.js
