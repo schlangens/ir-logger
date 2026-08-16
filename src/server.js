@@ -61,6 +61,7 @@ function createApp(db, opts = {}) {
   app.use(express.static(path.join(__dirname, '../public')));
   app.use('/api/auth', auth);
   app.use('/', health);
+  app.use('/', require('./routes/downloads'));
   app.use('/api', workspaces);
   app.use('/api', require('./routes/incidents'));
   app.use('/api', require('./routes/entries'));

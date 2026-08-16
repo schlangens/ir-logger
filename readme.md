@@ -82,6 +82,7 @@ To customize it, copy `.env.example` to `.env` and fill in what you need:
 | `BASE_URL` | `https://ir.scottslab.io` | used to build Google OAuth callback and invite URLs; this is the live deployment |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | unset | only needed to enable "Sign in with Google"; email+password accounts work without them |
 | `NODE_ENV` | unset | set to `production` to require `SESSION_SECRET` and secure cookies |
+| `REGISTRATION_OPEN` | open (unset) | set to the literal string `false` to close public sign-up on this instance — the default is **open** so a fresh clone always works with zero configuration. Existing accounts can still log in when closed, and an owner can still add a colleague by invite (the invite link lets that one new account through). The live deployment sets this to `false`. |
 
 The app serves a browser interface from `public/` alongside its JSON API
 (routes under `/api/...`, plus `GET /health`). Sign-in is email and password;

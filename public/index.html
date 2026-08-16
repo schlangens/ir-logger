@@ -14,7 +14,7 @@
         <h1>Incident response, shared and searchable</h1>
         <p>Build a live timeline, tag MITRE ATT&CK techniques, chain evidence custody, and export reports — together.</p>
         <div class="landing__actions">
-          <a class="btn btn--primary" href="/register.html">Start free</a>
+          <a class="btn btn--primary is-hidden" data-registration-gated href="/register.html">Start free</a>
           <button class="btn btn--secondary" data-demo type="button">Try the live demo</button>
         </div>
         <div data-demo-status></div>
@@ -51,9 +51,30 @@
       </div>
     </section>
 
+    <section class="landing__runit" aria-label="Run it yourself">
+      <h2>Run it yourself</h2>
+      <div class="landing__runit-grid">
+        <div class="landing__runit-block">
+          <h3>Self-host the web app</h3>
+          <p>This is open source and there's no build step — clone it and run it on your own machine or server.</p>
+          <pre><code>git clone https://github.com/schlangens/ir-logger.git
+cd ir-logger
+npm install
+npm start</code></pre>
+          <p>Full setup details are in the project's readme on GitHub.</p>
+        </div>
+        <div class="landing__runit-block">
+          <h3>Offline desktop tool</h3>
+          <p>The original version of this project: a standalone desktop app for one analyst logging findings to local Markdown files. No server, no account, no network at all.</p>
+          <a class="btn btn--secondary" href="/downloads/ir-logger.py" download><svg width="16" height="16" aria-hidden="true"><use href="/icons/ui.svg#download"></use></svg>Download the desktop tool (ir-logger.py)</a>
+          <p>Needs Python (with its bundled <code>tkinter</code> module); pasting images from the clipboard needs one extra package, Pillow (<code>pip install pillow</code>). It's a single analyst working alone on one machine — no live sharing, ATT&amp;CK tagging, or audit log like the web app above.</p>
+        </div>
+      </div>
+    </section>
+
     <footer class="landing__footer">
       <a href="/login.html">Sign in</a>
-      <a href="/register.html">Create account</a>
+      <a href="https://github.com/schlangens/ir-logger" target="_blank" rel="noopener noreferrer">GitHub repo</a>
     </footer>
   </main>
 

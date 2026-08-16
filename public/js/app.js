@@ -2,6 +2,7 @@ import { initTheme, toggleTheme, currentTheme } from './theme.js';
 import { session, loadSession, restoreWorkspace, setWorkspace, logout, currentWorkspaceId } from './session.js';
 import { h, uiIcon, loading, errorBox } from './ui.js';
 import { bindSearch } from './search.js';
+import { initRegistrationGate } from './auth.js';
 
 function renderSearchDialog(workspaceId) {
   const dialog = document.createElement('dialog');
@@ -44,7 +45,11 @@ function renderUserMenu() {
   } else {
     menu.append(
       h('a', { href: '/login.html' }, 'Sign in'),
-      h('a', { href: '/register.html' }, 'Create account')
+      // Hidden by default; initRegistrationGate() (called once at the end
+      // of initApp() below) reveals it the same way it does on
+      // login.html/register.html/index.html — see the fail-open rationale
+      // in auth.js.
+      h('a', { href: '/register.html', class: 'is-hidden', 'data-registration-gated': '' }, 'Create account')
     );
   }
 
@@ -129,6 +134,18 @@ export async function initApp() {
       if (ws) renderSearchDialog(ws);
     }
   });
+
+  // Persistent link back to the source, reachable from inside the app the
+  // same way the landing page's footer offers it (index.html).
+  if (!document.querySelector('.app-footer')) {
+    document.body.append(
+      h('footer', { class: 'app-footer' },
+        h('a', { href: 'https://github.com/schlangens/ir-logger', target: '_blank', rel: 'noopener noreferrer' }, 'GitHub repo')
+      )
+    );
+  }
+
+  initRegistrationGate();
 
   return session;
 }

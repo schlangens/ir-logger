@@ -10,30 +10,39 @@
 <body>
   <main class="auth">
     <h1>Create account</h1>
-    <form id="register-form" novalidate>
-      <div class="form__group">
-        <label class="form__label" for="name">Display name</label>
-        <input class="form__input" id="name" name="name" autocomplete="name" required>
-      </div>
-      <div class="form__group">
-        <label class="form__label" for="email">Email</label>
-        <input class="form__input" id="email" name="email" type="email" autocomplete="email" required>
-      </div>
-      <div class="form__group">
-        <label class="form__label" for="password">Password</label>
-        <input class="form__input" id="password" name="password" type="password" autocomplete="new-password" required minlength="8">
-      </div>
-      <div class="form__group">
-        <label class="form__label" for="password_confirm">Confirm password</label>
-        <input class="form__input" id="password_confirm" name="password_confirm" type="password" autocomplete="new-password" required>
-      </div>
-      <div class="form__error" data-error hidden></div>
-      <button class="btn btn--primary btn--block" type="submit">Create account</button>
-    </form>
 
-    <div class="auth__separator is-hidden" id="google-divider">or</div>
+    <div class="notice notice--accent is-hidden" id="registration-closed-notice" role="status">
+      This instance isn't accepting new sign-ups right now. <a href="/">Try the live demo</a>
+      instead, or <a href="https://github.com/schlangens/ir-logger" target="_blank" rel="noopener noreferrer">self-host the project</a>
+      to run your own.
+    </div>
 
-    <a class="btn btn--secondary btn--block is-hidden" id="google-signin" href="/api/auth/google">Continue with Google</a>
+    <div class="is-hidden" data-registration-gated>
+      <form id="register-form" novalidate>
+        <div class="form__group">
+          <label class="form__label" for="name">Display name</label>
+          <input class="form__input" id="name" name="name" autocomplete="name" required>
+        </div>
+        <div class="form__group">
+          <label class="form__label" for="email">Email</label>
+          <input class="form__input" id="email" name="email" type="email" autocomplete="email" required>
+        </div>
+        <div class="form__group">
+          <label class="form__label" for="password">Password</label>
+          <input class="form__input" id="password" name="password" type="password" autocomplete="new-password" required minlength="8">
+        </div>
+        <div class="form__group">
+          <label class="form__label" for="password_confirm">Confirm password</label>
+          <input class="form__input" id="password_confirm" name="password_confirm" type="password" autocomplete="new-password" required>
+        </div>
+        <div class="form__error" data-error hidden></div>
+        <button class="btn btn--primary btn--block" type="submit">Create account</button>
+      </form>
+
+      <div class="auth__separator is-hidden" id="google-divider">or</div>
+
+      <a class="btn btn--secondary btn--block is-hidden" id="google-signin" href="/api/auth/google">Continue with Google</a>
+    </div>
 
     <p class="auth__footer">
       Already have an account? <a href="/login.html">Sign in</a>

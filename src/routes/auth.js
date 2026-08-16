@@ -16,30 +16,67 @@ const loginLimit = rateLimit({
   countMode: 'refund-on-success',
 });
 const userShape = (u) => ({ id: u.id, email: u.email, name: u.name });
+// Named to avoid colliding with the unrelated `hash` (bcrypt password hash)
+// local variable already declared inside the /register handler below.
+const hashToken = (s) => crypto.createHash('sha256').update(s).digest('hex');
 function regenerate(req) {
   return new Promise((resolve, reject) =>
     req.session.regenerate((e) => (e ? reject(e) : resolve())),
   );
 }
+// REGISTRATION_OPEN gates public sign-up on this instance. It defaults to
+// open (unset, or set to anything other than the literal string "false")
+// so that a stranger who clones this repo and runs it with zero
+// configuration still gets a working sign-up — that clone-and-run
+// property is the whole point of an open-source showcase. The live
+// deployment sets it to "false" once it has real users.
+function registrationOpen() {
+  return process.env.REGISTRATION_OPEN !== 'false';
+}
+// Closing public registration must not lock a workspace owner out of ever
+// adding a colleague: accepting an invite (POST /api/invites/:token/accept,
+// in workspaces.js) requires an existing session, and that session can
+// only come from an account whose email exactly matches the invite — so a
+// brand-new invitee has no way to get that account once registration is
+// closed. This looks up a pending, unexpired, unaccepted invite for the
+// exact email being registered and, if found, lets that one registration
+// through regardless of REGISTRATION_OPEN. It never reports *why* a token
+// didn't qualify (missing, expired, wrong email, already used) — same
+// generic rejection as any other closed attempt.
+function findValidInviteForEmail(db, token, normalizedEmail) {
+  if (typeof token !== 'string' || !token) return null;
+  const invite = db.prepare('SELECT * FROM invites WHERE token_hash=?').get(hashToken(token));
+  if (!invite || invite.accepted_at || new Date(invite.expires_at) <= new Date()) return null;
+  if (invite.email !== normalizedEmail) return null;
+  return invite;
+}
 router.post('/register', registrationLimit, async (req, res, next) => {
   const db = req.app.locals.db;
-  const { email, name, password } = req.body || {};
+  const { email, name, password, invite_token } = req.body || {};
   if (
     typeof email !== 'string' ||
     typeof name !== 'string' ||
     typeof password !== 'string' ||
+    (invite_token !== undefined && typeof invite_token !== 'string') ||
     !email ||
     !name ||
     password.length < 10 ||
     email.length > 320 ||
     name.length > 200 ||
-    password.length > 1024
+    password.length > 1024 ||
+    (typeof invite_token === 'string' && invite_token.length > 200)
   )
     return res.status(400).json({
       error: 'Email, name, and password of at least 10 characters are required',
     });
+  const normalizedEmail = email.toLowerCase();
+  if (!registrationOpen() && !findValidInviteForEmail(db, invite_token, normalizedEmail)) {
+    return res.status(403).json({
+      error:
+        'This instance is not accepting public sign-ups right now. Try the live demo instead, or self-host the project from its source on GitHub.',
+    });
+  }
   try {
-    const normalizedEmail = email.toLowerCase();
     if (db.prepare('SELECT id FROM users WHERE email=?').get(normalizedEmail))
       return res.status(400).json({ error: 'Email already registered' });
     const id = nanoid(16),
@@ -114,20 +151,36 @@ router.get('/session', (req, res) => {
   // frontend's only way to know, so the "Continue with Google" button can
   // hide itself instead of pointing at a route that isn't there.
   const googleEnabled = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+  // `registration_open` reflects REGISTRATION_OPEN (defined above); it is
+  // how login.html/register.html/index.html decide whether to show a
+  // "create an account" affordance instead of one that would 403.
+  const registrationIsOpen = registrationOpen();
   try {
-    if (!req.user) return res.json({ user: null, workspaces: [], google_enabled: googleEnabled });
+    if (!req.user)
+      return res.json({
+        user: null,
+        workspaces: [],
+        google_enabled: googleEnabled,
+        registration_open: registrationIsOpen,
+      });
     const rows = req.app.locals.db
       .prepare(
         'SELECT w.id,w.name,m.role FROM memberships m JOIN workspaces w ON w.id=m.workspace_id WHERE m.user_id=? ORDER BY w.created_at',
       )
       .all(req.user.id);
-    res.json({ user: userShape(req.user), workspaces: rows, google_enabled: googleEnabled });
+    res.json({
+      user: userShape(req.user),
+      workspaces: rows,
+      google_enabled: googleEnabled,
+      registration_open: registrationIsOpen,
+    });
   } catch (e) {
     // Session lookup errors are swallowed because this endpoint always returns 200.
     res.json({
       user: req.user ? userShape(req.user) : null,
       workspaces: [],
       google_enabled: googleEnabled,
+      registration_open: registrationIsOpen,
     });
   }
 });

@@ -338,6 +338,23 @@ restriction: v2 does not send transactional email at all, including for
 password reset (there is no password-reset flow in this build — see §11
 Non-goals).
 
+**Closing public registration (`REGISTRATION_OPEN`)**: `POST
+/api/auth/register` is gated by the `REGISTRATION_OPEN` environment
+variable — open by default (unset, or anything other than the literal
+string `"false"`), so a zero-configuration clone always gets a working
+sign-up. The live deployment sets it to `"false"` once it has real users,
+so a stranger can no longer create an account there; existing accounts
+(password or Google) still log in normally, and the login/register pages
+hide the sign-up affordance rather than offer one that would fail (§5.2).
+Closing registration must not strand a workspace owner: because accepting
+an invite (`POST /api/invites/:token/accept`, above) requires an existing
+session whose account email matches the invite exactly, a brand-new
+invitee would otherwise have no way to get that account. `POST
+/api/auth/register` therefore also accepts an optional `invite_token`
+field and lets that one registration through, regardless of
+`REGISTRATION_OPEN`, if it matches a pending, unexpired, unaccepted
+invite for the email being registered (§5.2).
+
 ### 2.10 Desktop v1 sync
 
 `ir-logger.py` continues to work fully offline with zero server dependency —
@@ -733,17 +750,18 @@ is `payload_json`'s value type, covered above, not a rename.
 | Method | Path | Auth | Response |
 |---|---|---|---|
 | GET | `/health` | none | `200 { "status": "ok", "uptimeSeconds": n, "db": "ok" }` or `503 { "status": "error", "db": "error" }` if a trivial `SELECT 1` fails |
+| GET | `/downloads/ir-logger.py` | none | Streams the repo-root `ir-logger.py` file (the v1 desktop tool, §2.10) as a forced download — `Content-Type: application/octet-stream`, `Content-Disposition: attachment; filename="ir-logger.py"`, same convention as evidence downloads (§7) so the browser always saves rather than renders the source. `404` if the file is somehow missing. Linked from the landing page's self-host section. |
 
 ### 5.2 Auth
 
 | Method | Path | Auth | Request | Response |
 |---|---|---|---|---|
-| POST | `/api/auth/register` | none | `{ email, password, name }` | `201 { user: { id, email, name } }`, session cookie set. `400` if email already registered, password < 10 chars, or any field missing. Rate-limited: 5 registrations per IP per rolling 60-minute window (fixed-window, via Round 1's `rate-limit.js` factory — same fail-closed contract as every other limiter in this spec), then `429` until the window rolls; fail-closed on limiter storage error → `503`. Registration is open and unauthenticated and each account can create workspaces holding up to 200MB of evidence each, so this limiter is a required disk-exhaustion guard, not optional polish. |
-| POST | `/api/auth/login` | none | `{ email, password }` | `200 { user }`, session cookie set. `401` on bad credentials. Rate-limited: 10 failed attempts per IP per 15-minute window, then `429` until the window rolls; fail-closed on limiter storage error → `503`. |
+| POST | `/api/auth/register` | none | `{ email, password, name, invite_token? }` | `201 { user: { id, email, name } }`, session cookie set. `400` if email already registered, password < 10 chars, or any field missing. `403` if `REGISTRATION_OPEN=false` and `invite_token` does not match a pending, unexpired, unaccepted invite for `email` (§2.9) — the message states this instance isn't accepting sign-ups, that the demo is available, and that the project can be self-hosted, without revealing why a given `invite_token` didn't qualify. Rate-limited: 5 registrations per IP per rolling 60-minute window (fixed-window, via Round 1's `rate-limit.js` factory — same fail-closed contract as every other limiter in this spec), then `429` until the window rolls; fail-closed on limiter storage error → `503`. Registration is unauthenticated (when open) and each account can create workspaces holding up to 200MB of evidence each, so this limiter is a required disk-exhaustion guard, not optional polish. |
+| POST | `/api/auth/login` | none | `{ email, password }` | `200 { user }`, session cookie set. `401` on bad credentials. Rate-limited: 10 failed attempts per IP per 15-minute window, then `429` until the window rolls; fail-closed on limiter storage error → `503`. Unaffected by `REGISTRATION_OPEN` — existing accounts always log in. |
 | POST | `/api/auth/logout` | session | — | `200 { success: true }` |
 | GET | `/api/auth/google` | none | — | redirects to Google OAuth consent |
 | GET | `/api/auth/google/callback` | none | — | on success, creates/links a `users` row by `google_id` (or by matching `email` if a password account already exists, linking `google_id` onto it) and redirects to `/`; on failure redirects to `/login?error=1` |
-| GET | `/api/auth/session` | none | — | `200 { user: {...} \| null, workspaces: [{id, name, role}], google_enabled: bool }` — the frontend's "am I logged in" check; never errors, always 200. `google_enabled` reflects only whether `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` are set (the same condition gating the Google strategy and routes below) — it is how `login.html`/`register.html` decide whether to show the "Continue with Google" button, and never exposes the client id, secret, or any other configuration detail |
+| GET | `/api/auth/session` | none | — | `200 { user: {...} \| null, workspaces: [{id, name, role}], google_enabled: bool, registration_open: bool }` — the frontend's "am I logged in" check; never errors, always 200. `google_enabled` reflects only whether `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` are set (the same condition gating the Google strategy and routes below) — it is how `login.html`/`register.html` decide whether to show the "Continue with Google" button, and never exposes the client id, secret, or any other configuration detail. `registration_open` reflects `REGISTRATION_OPEN` (§2.9) — it is how `index.html`/`login.html`/`register.html` decide whether to show a "create an account" affordance. |
 
 Public JSON boundaries reject non-string fields and cap email at 320 characters,
 name/workspace name/invite/token name at 200 characters, and passwords at 1024

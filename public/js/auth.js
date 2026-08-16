@@ -41,11 +41,17 @@ export function initRegister(form) {
     }
     const submit = form.querySelector('button[type="submit"]');
     submit.disabled = true;
+    // A visitor who arrived via an invite link (register.html?invite=...)
+    // carries that token along so the server can let this one
+    // registration through even if REGISTRATION_OPEN=false (see
+    // findValidInviteForEmail in src/routes/auth.js).
+    const inviteToken = new URLSearchParams(window.location.search).get('invite');
     try {
       await post('/api/auth/register', {
         email: data.email,
         password: data.password,
         name: data.name,
+        ...(inviteToken ? { invite_token: inviteToken } : {}),
       });
       window.location.href = '/app/dashboard.html';
     } catch (err) {
@@ -84,10 +90,64 @@ export async function initGoogleSignIn() {
   }
 }
 
+// Registration affordances — the "Start free" button on index.html, the
+// "Create one" link on login.html, and the sign-up form itself on
+// register.html — start hidden in the delivered HTML (`is-hidden`, same
+// mechanism as the Google button above) so a closed instance never
+// flashes a sign-up control that would 403 on submit. GET
+// /api/auth/session reports `registration_open` (never *why* it's closed)
+// so these can decide whether to reveal themselves; register.html also
+// reveals a `#registration-closed-notice` in the opposite case.
+//
+// Failure stance: OPEN — the opposite of initGoogleSignIn's fail-closed
+// stance. The Google button always has a working fallback (the
+// email/password form), so hiding it on any check failure costs nothing.
+// Sign-up has no fallback: on a fresh, zero-configuration clone it is the
+// *only* way in, since nothing seeds an account. If this check can't get
+// a definitive answer (network error, bad JSON), assuming the default —
+// open — is the safe read: the real gate is enforced server-side in POST
+// /api/auth/register regardless of what this page shows, so revealing the
+// control when we couldn't confirm the state costs at most a 403 on
+// submit on a genuinely closed instance, whereas hiding it when we
+// couldn't confirm the state could strand a first-time visitor with no
+// way in at all. A visitor arriving via an invite link (`?invite=` on
+// register.html) always sees the working form regardless of this check —
+// the server alone decides, on submit, whether their invite lets
+// registration through on a closed instance (see auth.js's
+// findValidInviteForEmail on the server).
+export async function initRegistrationGate() {
+  const gated = document.querySelectorAll('[data-registration-gated]');
+  const closedNotice = document.getElementById('registration-closed-notice');
+  if (!gated.length && !closedNotice) return;
+  const reveal = () => gated.forEach((el) => el.classList.remove('is-hidden'));
+  if (new URLSearchParams(window.location.search).has('invite')) {
+    reveal();
+    return;
+  }
+  try {
+    const data = await get('/api/auth/session', undefined, { noRedirect: true });
+    if (data && data.registration_open === false) {
+      if (closedNotice) closedNotice.classList.remove('is-hidden');
+      return;
+    }
+  } catch (err) {
+    // Fail open — see comment above.
+  }
+  reveal();
+}
+
 export function initInvite(form) {
-  if (!form) return;
   const params = new URLSearchParams(window.location.search);
   const token = params.get('token');
+  // A visitor without an account yet is sent to register.html carrying the
+  // same token, so a closed instance still lets them create the one
+  // account this invite entitles them to (see initRegistrationGate and
+  // initRegister above).
+  const registerLink = document.getElementById('invite-register-link');
+  if (registerLink && token) {
+    registerLink.href = `/register.html?invite=${encodeURIComponent(token)}`;
+  }
+  if (!form) return;
   const error = form.querySelector('[data-error]');
   const success = form.querySelector('[data-success]');
   form.addEventListener('submit', async (e) => {
