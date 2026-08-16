@@ -32,7 +32,7 @@ the before-launch checklist and the one item on it that was skipped.
 
 ## Running the tests
 
-Node test suite (166 tests, using Node's built-in test runner — no extra
+Node test suite (187 tests, using Node's built-in test runner — no extra
 install beyond `npm install`):
 
 ```
@@ -79,13 +79,14 @@ To customize it, copy `.env.example` to `.env` and fill in what you need:
 | `SESSION_SECRET` | random (dev only) | **required** if `NODE_ENV=production` |
 | `DB_PATH` | `./data/ir-logger.db` | directory is created automatically |
 | `EVIDENCE_DIR` | `./data/evidence` | uploaded evidence file storage |
-| `BASE_URL` | `https://ir.scottslab.io` | used to build Google OAuth callback and invite URLs — not a live site |
+| `BASE_URL` | `https://ir.scottslab.io` | used to build Google OAuth callback and invite URLs; this is the live deployment |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | unset | only needed to enable "Sign in with Google"; email+password accounts work without them |
 | `NODE_ENV` | unset | set to `production` to require `SESSION_SECRET` and secure cookies |
 
-Since there is no frontend yet, the running app only exposes its JSON API
-(routes under `/api/...`, plus `GET /health`) — there is nothing to click
-around in a browser yet.
+The app serves a browser interface from `public/` alongside its JSON API
+(routes under `/api/...`, plus `GET /health`). Sign-in is email and password;
+Google is optional and its button only appears when it is actually
+configured, so a clone with no configuration has no dead controls.
 
 ---
 

@@ -311,13 +311,16 @@ hop count to match.
   log. All three are explicitly out of scope for this build. The stated
   guarantee is "tamper-evident against everything except a privileged actor
   who also updates the chain," never "tamper-proof."
-- Nothing is deployed. There is no live server anyone can visit, and there is
-  no browser interface yet — only the HTTP API and its test suite exist
-  today.
-- The demo sandbox is a real, running-server threat model that was tested
-  live during development, but it has never been exposed on the public
-  internet; the attacks described above were run against a local development
-  instance.
+- This is deployed and public at https://ir.scottslab.io, behind a Let's
+  Encrypt certificate, with the application bound to loopback and reachable
+  only through the reverse proxy. The demo sandbox IS exposed to the open
+  internet. The attacks described above were first run against a local
+  instance during development and then re-run against the public deployment,
+  including proving a forged `X-Forwarded-For` cannot influence the per-IP
+  limiter.
+- Two things about that deployment are honestly unresolved rather than
+  solved: nothing monitors the service yet (no uptime check, no error
+  reporting), and there is no automated backup — only a manual snapshot.
 
 ## How this was built
 
