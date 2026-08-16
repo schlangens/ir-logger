@@ -607,6 +607,17 @@ pre code {
   color: var(--accent);
 }
 
+.table-wrap {
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  overflow-x: auto;
+  background: var(--bg-surface);
+}
+
+.table-wrap .table {
+  min-width: 100%;
+}
+
 /* States */
 .state {
   display: flex;
@@ -867,7 +878,7 @@ dialog.modal::backdrop {
   border-top: 1px solid var(--border-subtle);
 }
 
-.landing__feature h3 {
+.landing__feature h2 {
   font-size: var(--text-lg);
   margin: var(--space-3) 0 var(--space-2);
 }
@@ -1178,7 +1189,20 @@ dialog.modal::backdrop {
   background: var(--bg-surface-raised);
   border: 1px solid var(--border-default);
   font-size: var(--text-xs);
+  color: var(--text-primary);
+}
+
+.technique-chip__main,
+.technique-chip__remove {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
   cursor: pointer;
+  padding: 0;
+  margin: 0;
+  line-height: 1;
 }
 
 .technique-chip__id {
@@ -1559,13 +1583,31 @@ dialog.modal::backdrop {
 
 .icon-sprite { display: none; }
 
-.picker-list { list-style: none; padding-left: 0; }
-.picker-list li { padding: 8px 0; border-bottom: 1px solid var(--border-subtle); cursor: pointer; }
+.picker-list { list-style: none; padding-left: 0; margin: 0; }
+.picker-list li { border-bottom: 1px solid var(--border-subtle); }
+.picker-list li:last-child { border-bottom: none; }
+
+.picker-list__item {
+  width: 100%;
+  padding: var(--space-2) 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+}
+
+.picker-list__item:hover,
+.picker-list__item:focus-visible {
+  background: var(--bg-surface-raised);
+}
 
 .matrix__entries { list-style: none; padding-left: 0; }
 .matrix__entry { padding: 8px 0; border-bottom: 1px solid var(--border-subtle); }
-
-.technique-chip__remove { cursor: pointer; }
 
 .topbar__menu-header { padding: 8px 12px; }
 

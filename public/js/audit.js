@@ -32,7 +32,7 @@ function renderAuditRow(entry) {
 export function renderAudit(container, workspaceId, { canVerify = false } = {}) {
   container.innerHTML = '';
   const resultBox = h('div', {});
-  const tableWrap = h('div', { class: 'card' });
+  const tableWrap = h('div', { class: 'table-wrap' });
 
   const load = async () => {
     tableWrap.innerHTML = '';

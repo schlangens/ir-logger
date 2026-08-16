@@ -1,5 +1,5 @@
 import { post } from './api.js';
-import { h, loading, errorBox } from './ui.js';
+import { h, loading, errorBox, rateLimitBox } from './ui.js';
 
 export async function initLanding(container) {
   const demoBtn = container.querySelector('[data-demo]');
@@ -17,7 +17,9 @@ export async function initLanding(container) {
         throw new Error('Demo did not return an incident.');
       }
     } catch (err) {
-      const el = errorBox(err.message || 'Could not start demo.');
+      const el = (err.status === 429 || err.status === 503)
+        ? rateLimitBox(err.retryAfter)
+        : errorBox(err.message || 'Could not start demo.');
       if (status) status.append(el);
       else container.append(el);
       demoBtn.disabled = false;
