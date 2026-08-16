@@ -46,18 +46,19 @@ function showTechniquePopover(technique, anchor) {
 
 function renderTechniqueChip(techniqueId, options = {}) {
   const info = techniqueMap.get(techniqueId);
-  const chip = h('button', { class: 'technique-chip', type: 'button' },
+  const main = h('button', { class: 'technique-chip__main', type: 'button' },
     h('span', { class: 'technique-chip__id' }, techniqueId),
     info ? h('span', { class: 'technique-chip__name' }, info.name) : null
   );
+  if (info) {
+    main.title = `${info.name} — ${info.tactic || 'MITRE ATT&CK'}`;
+    main.addEventListener('click', () => showTechniquePopover(info, main));
+  }
+  const chip = h('span', { class: 'technique-chip' }, main);
   if (options.onRemove) {
-    const remove = h('span', { class: 'technique-chip__remove', 'aria-label': `Remove ${techniqueId}` }, '×');
+    const remove = h('button', { class: 'technique-chip__remove', type: 'button', 'aria-label': `Remove ${techniqueId}` }, '×');
     remove.addEventListener('click', (e) => { e.stopPropagation(); options.onRemove(techniqueId); });
     chip.append(remove);
-  }
-  if (info) {
-    chip.title = `${info.name} — ${info.tactic || 'MITRE ATT&CK'}`;
-    chip.addEventListener('click', () => showTechniquePopover(info, chip));
   }
   return chip;
 }
@@ -261,12 +262,12 @@ async function openTechniquePicker(onSelect) {
     }
     const ul = h('ul', { class: 'picker-list' });
     for (const t of techniques) {
-      const li = h('li', {},
+      const btn = h('button', { class: 'picker-list__item', type: 'button' },
         h('code', {}, t.id), ' — ', t.name,
         h('span', { class: 'form__hint' }, ` ${t.tactic}`)
       );
-      li.addEventListener('click', () => { onSelect(t.id); dialog.close(); });
-      ul.append(li);
+      btn.addEventListener('click', () => { onSelect(t.id); dialog.close(); });
+      ul.append(h('li', {}, btn));
     }
     list.append(ul);
   };

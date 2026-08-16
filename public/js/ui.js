@@ -14,8 +14,6 @@ export function h(tag, attrs = {}, ...children) {
       el.addEventListener(k.slice(2).toLowerCase(), v);
     } else if (k === 'ariaLabel') {
       el.setAttribute('aria-label', v);
-    } else if (k === 'html') {
-      el.innerHTML = v;
     } else if (v !== undefined && v !== null) {
       if (v === false) {
         const booleans = new Set(['selected','checked','disabled','readonly','required','hidden','autofocus','multiple','open','reversed']);

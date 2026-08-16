@@ -68,6 +68,7 @@ export function renderIncidentList(container, { incidents = [], total = 0, onSel
     return;
   }
 
+  const tableWrap = h('div', { class: 'table-wrap' });
   const table = h('table', { class: 'table' });
   const thead = h('thead');
   thead.append(h('tr', {},
@@ -107,7 +108,8 @@ export function renderIncidentList(container, { incidents = [], total = 0, onSel
     tbody.append(tr);
   }
   table.append(tbody);
-  container.append(table);
+  tableWrap.append(table);
+  container.append(tableWrap);
 
   const caption = h('p', { class: 'form__hint' }, `Showing ${incidents.length} of ${total}`);
   container.append(caption);
