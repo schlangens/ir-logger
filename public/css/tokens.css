@@ -1,0 +1,107 @@
+:root,
+[data-theme="dark"] {
+  --bg-canvas: #0b0d12;
+  --bg-surface: #12151c;
+  --bg-surface-raised: #1a1e28;
+  --bg-overlay: rgba(6, 7, 10, 0.72);
+
+  --border-subtle: #232833;
+  --border-default: #333a4a;
+  --border-strong: #4a5468;
+
+  --text-primary: #e8eaf0;
+  --text-secondary: #a2a9bd;
+  --text-muted: #6b7284;
+  --text-on-accent: #08101f;
+
+  --accent: #4c8dff;
+  --accent-hover: #6ea1ff;
+  --accent-active: #3a72e0;
+  --accent-muted: rgba(76, 141, 255, 0.14);
+
+  --severity-low: #3fb950;
+  --severity-medium: #d4a72c;
+  --severity-high: #e8833a;
+  --severity-critical: #e5484d;
+
+  --status-open: #4c8dff;
+  --status-contained: #2fb8a6;
+  --status-eradicated: #a374e0;
+  --status-recovered: #3fb950;
+  --status-closed: #6b7284;
+
+  --danger: #e5484d;
+  --danger-muted: rgba(229, 72, 77, 0.14);
+  --success: #3fb950;
+  --warning: #d4a72c;
+}
+
+[data-theme="light"] {
+  --bg-canvas: #f4f5f8;
+  --bg-surface: #ffffff;
+  --bg-surface-raised: #eef0f4;
+  --bg-overlay: rgba(20, 23, 30, 0.45);
+
+  --border-subtle: #e2e4ea;
+  --border-default: #cbd0dc;
+  --border-strong: #9aa1b4;
+
+  --text-primary: #14171f;
+  --text-secondary: #4a5165;
+  --text-muted: #7a8194;
+  --text-on-accent: #ffffff;
+
+  --accent: #2f6fe0;
+  --accent-hover: #1f5bcc;
+  --accent-active: #184aa8;
+  --accent-muted: rgba(47, 111, 224, 0.10);
+
+  --severity-low: #1f8a3b;
+  --severity-medium: #a3790f;
+  --severity-high: #c15b18;
+  --severity-critical: #c92931;
+
+  --status-open: #2f6fe0;
+  --status-contained: #17806f;
+  --status-eradicated: #7a3fc4;
+  --status-recovered: #1f8a3b;
+  --status-closed: #6b7284;
+
+  --danger: #c92931;
+  --danger-muted: rgba(201, 41, 49, 0.10);
+  --success: #1f8a3b;
+  --warning: #a3790f;
+}
+
+:root {
+  --font-sans: 'Inter Variable', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.5rem;
+  --text-2xl: 2rem;
+  --text-hero: 2.5rem;
+
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  --elevation-1: none;
+  --elevation-2: 0 8px 24px rgba(0, 0, 0, 0.35);
+
+  --motion-fast: 120ms ease;
+  --motion-base: 180ms ease;
+
+  --topbar-height: 56px;
+}

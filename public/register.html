@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Create account — Incident Logger</title>
+  <link rel="stylesheet" href="/css/tokens.css">
+  <link rel="stylesheet" href="/css/components.css">
+</head>
+<body>
+  <main class="auth">
+    <h1>Create account</h1>
+    <form id="register-form" novalidate>
+      <div class="form__group">
+        <label class="form__label" for="name">Display name</label>
+        <input class="form__input" id="name" name="name" autocomplete="name" required>
+      </div>
+      <div class="form__group">
+        <label class="form__label" for="email">Email</label>
+        <input class="form__input" id="email" name="email" type="email" autocomplete="email" required>
+      </div>
+      <div class="form__group">
+        <label class="form__label" for="password">Password</label>
+        <input class="form__input" id="password" name="password" type="password" autocomplete="new-password" required minlength="8">
+      </div>
+      <div class="form__group">
+        <label class="form__label" for="password_confirm">Confirm password</label>
+        <input class="form__input" id="password_confirm" name="password_confirm" type="password" autocomplete="new-password" required>
+      </div>
+      <div class="form__error" data-error hidden></div>
+      <button class="btn btn--primary btn--block" type="submit">Create account</button>
+    </form>
+
+    <div class="auth__separator">or</div>
+
+    <a class="btn btn--secondary btn--block" href="/api/auth/google">Continue with Google</a>
+
+    <p class="auth__footer">
+      Already have an account? <a href="/login.html">Sign in</a>
+    </p>
+  </main>
+
+  <script type="module" src="/js/page-register.js"></script>
+</body>
+</html>
