@@ -922,6 +922,16 @@ dialog.modal::backdrop {
   gap: var(--space-6);
 }
 
+/* Grid items default to min-width: auto, so their minimum size is their
+   content's min-content width -- for the unbreakable `git clone` command
+   line in the <pre> below, that's the full line width. Without this, the
+   grid track (and the page) grows to fit that line instead of letting the
+   pre's own overflow-x: auto (below) scroll it, the same way .table-wrap
+   and .matrix contain their own horizontal overflow. */
+.landing__runit-block {
+  min-width: 0;
+}
+
 .landing__runit-block h3 {
   font-size: var(--text-lg);
   margin-bottom: var(--space-2);

@@ -83,6 +83,30 @@ test('owner invites and invited user accepts by raw token hash', async (t) => {
   assert.equal((await invited.post(`/api/invites/${expired}/accept`)).status, 404);
 });
 
+test('the invite URL the server generates is actually served by this app and reaches the acceptance page', async (t) => {
+  const { db } = makeDb();
+  const app = createApp(db, { startSweeper: false });
+  t.after(() => close(app, db));
+  const owner = await register(app, 'invite-url-owner@example.test', 'Owner');
+  const workspace = await owner.post('/api/workspaces').send({ name: 'URL Check' });
+  const id = workspace.body.workspace.id;
+  const invite = await owner
+    .post(`/api/workspaces/${id}/invite`)
+    .send({ email: 'stranger@example.test', role: 'viewer' });
+  assert.equal(invite.status, 201);
+  const inviteUrl = new URL(invite.body.invite_url);
+  // A real invited person is not signed in yet when they first open this
+  // link -- follow it with a fresh, unauthenticated client, not the
+  // inviting owner's own session, so this actually proves the link itself
+  // works and not just that a token exists in the database.
+  const stranger = request.agent(app);
+  const page = await stranger.get(inviteUrl.pathname);
+  assert.equal(page.status, 200);
+  assert.match(page.headers['content-type'], /text\/html/);
+  assert.match(page.text, /Accept invitation/);
+  assert.match(page.text, /id="invite-form"/);
+});
+
 test('non-owners cannot invite or manage tokens, and token lifecycle hides secrets', async (t) => {
   const { db } = makeDb();
   const app = createApp(db, { startSweeper: false });

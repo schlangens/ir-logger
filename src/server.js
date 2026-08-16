@@ -59,6 +59,18 @@ function createApp(db, opts = {}) {
   app.use(passport.initialize());
   app.use(passport.session());
   app.use(express.static(path.join(__dirname, '../public')));
+  // The invite link the server hands out (POST /api/workspaces/:id/invite,
+  // routes/workspaces.js) is shaped `/invite/<token>` — a path segment, for
+  // the cleaner, more shareable URL — but express.static above only serves
+  // the literal file /invite.html, nothing serves that path shape. This
+  // serves that same page at the pretty URL the link actually uses; the
+  // client (public/js/auth.js's initInvite) reads the token back out of
+  // the path. Kept as a plain route here rather than a new router module —
+  // it's a single static-file response, not a resource with its own
+  // business logic.
+  app.get('/invite/:token', (req, res) => {
+    res.sendFile(path.join(__dirname, '../public/invite.html'));
+  });
   app.use('/api/auth', auth);
   app.use('/', health);
   app.use('/', require('./routes/downloads'));

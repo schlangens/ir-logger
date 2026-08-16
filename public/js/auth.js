@@ -136,18 +136,68 @@ export async function initRegistrationGate() {
   reveal();
 }
 
-export function initInvite(form) {
-  const params = new URLSearchParams(window.location.search);
-  const token = params.get('token');
+// Reads the invite token from wherever it lives: the URL path for the
+// shareable link the server actually generates (`/invite/<token>`, served
+// by src/server.js), or the `?token=` query string as a fallback for a
+// hand-typed or bookmarked variant.
+function readInviteToken() {
+  const prefix = '/invite/';
+  if (window.location.pathname.startsWith(prefix)) {
+    const raw = window.location.pathname.slice(prefix.length);
+    if (raw) return decodeURIComponent(raw);
+  }
+  return new URLSearchParams(window.location.search).get('token') || '';
+}
+
+export async function initInvite(form) {
+  const loading = document.querySelector('[data-loading]');
+  const missingToken = document.querySelector('[data-missing-token]');
+  const signinRequired = document.querySelector('[data-signin-required]');
+  const registerLink = document.getElementById('invite-register-link');
+  const token = readInviteToken();
+
   // A visitor without an account yet is sent to register.html carrying the
   // same token, so a closed instance still lets them create the one
   // account this invite entitles them to (see initRegistrationGate and
   // initRegister above).
-  const registerLink = document.getElementById('invite-register-link');
   if (registerLink && token) {
     registerLink.href = `/register.html?invite=${encodeURIComponent(token)}`;
   }
+
+  if (!token) {
+    if (loading) loading.hidden = true;
+    if (missingToken) missingToken.hidden = false;
+    return;
+  }
+
+  // A stranger can land on this page with no session at all — submitting
+  // the accept form in that state would 401 and get silently redirected to
+  // /login.html by api.js, losing this exact link (and the token with it).
+  // Check sign-in state up front instead, and point an unauthenticated
+  // visitor at sign-in/registration first: they must still be able to
+  // finish accepting even when this instance has closed public sign-ups,
+  // which is exactly what register.html's invite-token handling exists
+  // for (see initRegister/initRegistrationGate above).
+  let signedIn = false;
+  try {
+    const session = await get('/api/auth/session', undefined, { noRedirect: true });
+    signedIn = Boolean(session && session.user);
+  } catch (err) {
+    // Fail closed on this check: treat "couldn't tell" the same as "not
+    // signed in" so the visitor gets the recovery message instead of a
+    // form that's guaranteed to fail.
+    signedIn = false;
+  }
+
+  if (loading) loading.hidden = true;
+
+  if (!signedIn) {
+    if (signinRequired) signinRequired.hidden = false;
+    return;
+  }
+
   if (!form) return;
+  form.hidden = false;
   const error = form.querySelector('[data-error]');
   const success = form.querySelector('[data-success]');
   form.addEventListener('submit', async (e) => {
@@ -156,7 +206,7 @@ export function initInvite(form) {
     const submit = form.querySelector('button[type="submit"]');
     submit.disabled = true;
     try {
-      const data = await post(`/api/invites/${encodeURIComponent(token)}/accept`);
+      await post(`/api/invites/${encodeURIComponent(token)}/accept`);
       if (success) success.hidden = false;
       setTimeout(() => { window.location.href = '/app/dashboard.html'; }, 1500);
     } catch (err) {
