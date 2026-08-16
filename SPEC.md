@@ -743,7 +743,7 @@ is `payload_json`'s value type, covered above, not a rename.
 | POST | `/api/auth/logout` | session | — | `200 { success: true }` |
 | GET | `/api/auth/google` | none | — | redirects to Google OAuth consent |
 | GET | `/api/auth/google/callback` | none | — | on success, creates/links a `users` row by `google_id` (or by matching `email` if a password account already exists, linking `google_id` onto it) and redirects to `/`; on failure redirects to `/login?error=1` |
-| GET | `/api/auth/session` | none | — | `200 { user: {...} \| null, workspaces: [{id, name, role}] }` — the frontend's "am I logged in" check; never errors, always 200 |
+| GET | `/api/auth/session` | none | — | `200 { user: {...} \| null, workspaces: [{id, name, role}], google_enabled: bool }` — the frontend's "am I logged in" check; never errors, always 200. `google_enabled` reflects only whether `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` are set (the same condition gating the Google strategy and routes below) — it is how `login.html`/`register.html` decide whether to show the "Continue with Google" button, and never exposes the client id, secret, or any other configuration detail |
 
 Public JSON boundaries reject non-string fields and cap email at 320 characters,
 name/workspace name/invite/token name at 200 characters, and passwords at 1024

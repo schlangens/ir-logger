@@ -176,6 +176,46 @@ test('registration limiter storage failure returns 503', async (t) => {
   assert.equal(response.status, 503);
 });
 
+test('session reports google_enabled false when Google is not configured', async (t) => {
+  const { db } = makeDb();
+  const app = createApp(db, { startSweeper: false });
+  t.after(() => close(app, db));
+  const response = await request(app).get('/api/auth/session');
+  assert.equal(response.status, 200);
+  assert.equal(response.body.google_enabled, false);
+});
+
+test('session reports google_enabled false when only one of the two env vars is set', async (t) => {
+  const { db } = makeDb();
+  process.env.GOOGLE_CLIENT_ID = 'client-only';
+  const app = createApp(db, { startSweeper: false });
+  t.after(() => {
+    close(app, db);
+    delete process.env.GOOGLE_CLIENT_ID;
+  });
+  const response = await request(app).get('/api/auth/session');
+  assert.equal(response.status, 200);
+  assert.equal(response.body.google_enabled, false);
+});
+
+test('session reports google_enabled true, with no id/secret leaked, once both env vars are set', async (t) => {
+  const { db } = makeDb();
+  process.env.GOOGLE_CLIENT_ID = 'test-client-id';
+  process.env.GOOGLE_CLIENT_SECRET = 'test-client-secret';
+  const app = createApp(db, { startSweeper: false });
+  t.after(() => {
+    close(app, db);
+    delete process.env.GOOGLE_CLIENT_ID;
+    delete process.env.GOOGLE_CLIENT_SECRET;
+  });
+  const response = await request(app).get('/api/auth/session');
+  assert.equal(response.status, 200);
+  assert.equal(response.body.google_enabled, true);
+  const serialized = JSON.stringify(response.body);
+  assert.equal(serialized.includes('test-client-id'), false);
+  assert.equal(serialized.includes('test-client-secret'), false);
+});
+
 test('Google login cannot link to or authenticate a synthetic demo user', (t) => {
   const { db } = makeDb();
   t.after(() => db.close());

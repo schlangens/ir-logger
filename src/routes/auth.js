@@ -107,17 +107,28 @@ router.get('/google/callback', (req, res, next) => {
   })(req, res, next);
 });
 router.get('/session', (req, res) => {
+  // `google_enabled` reveals only whether Google sign-in is wired up on the
+  // server (the same condition that gates the strategy in auth/passport.js
+  // and the /google, /google/callback routes above) — never the client id,
+  // the secret, or anything else about the configuration. This is the
+  // frontend's only way to know, so the "Continue with Google" button can
+  // hide itself instead of pointing at a route that isn't there.
+  const googleEnabled = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
   try {
-    if (!req.user) return res.json({ user: null, workspaces: [] });
+    if (!req.user) return res.json({ user: null, workspaces: [], google_enabled: googleEnabled });
     const rows = req.app.locals.db
       .prepare(
         'SELECT w.id,w.name,m.role FROM memberships m JOIN workspaces w ON w.id=m.workspace_id WHERE m.user_id=? ORDER BY w.created_at',
       )
       .all(req.user.id);
-    res.json({ user: userShape(req.user), workspaces: rows });
+    res.json({ user: userShape(req.user), workspaces: rows, google_enabled: googleEnabled });
   } catch (e) {
     // Session lookup errors are swallowed because this endpoint always returns 200.
-    res.json({ user: req.user ? userShape(req.user) : null, workspaces: [] });
+    res.json({
+      user: req.user ? userShape(req.user) : null,
+      workspaces: [],
+      google_enabled: googleEnabled,
+    });
   }
 });
 module.exports = router;

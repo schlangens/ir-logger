@@ -56,6 +56,34 @@ export function initRegister(form) {
   });
 }
 
+// The "Continue with Google" button and its divider start hidden in the
+// HTML (`is-hidden`, not the `hidden` attribute — both elements set their
+// own `display` in components.css, which an author-stylesheet rule always
+// wins over the `[hidden]` UA rule, so `hidden` alone would not actually
+// hide them). This reveals both together, or neither, so there's never a
+// dangling "or" divider with no button under it.
+//
+// Fail-closed stance: if the availability check itself errors (network
+// failure, non-2xx, bad JSON), the elements are left hidden rather than
+// shown. The email/password form above is always present and always
+// works, so hiding is the safe failure — showing a Google button that
+// might not actually be wired up (a dead link) is the failure this fix
+// exists to prevent in the first place.
+export async function initGoogleSignIn() {
+  const divider = document.getElementById('google-divider');
+  const button = document.getElementById('google-signin');
+  if (!divider || !button) return;
+  try {
+    const data = await get('/api/auth/session', undefined, { noRedirect: true });
+    if (data && data.google_enabled) {
+      divider.classList.remove('is-hidden');
+      button.classList.remove('is-hidden');
+    }
+  } catch (err) {
+    // Fail closed: leave both hidden.
+  }
+}
+
 export function initInvite(form) {
   if (!form) return;
   const params = new URLSearchParams(window.location.search);
